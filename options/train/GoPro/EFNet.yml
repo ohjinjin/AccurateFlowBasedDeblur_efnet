@@ -1,5 +1,5 @@
 # general settings
-name: debug #EFNet_experiment 
+name: EFNet_experiment 
 model_type: ImageEventRestorationModel
 scale: 1
 num_gpu:  1 #4
@@ -116,9 +116,9 @@ logger:
   print_freq: 200
   save_checkpoint_freq: !!float 2e4
   use_tb_logger: true
-  wandb:
-    project: your_project_name
-    resume_id: x
+#   wandb:
+#     project: your_project_name
+#     resume_id: x
 
 # dist training settings
 dist_params:

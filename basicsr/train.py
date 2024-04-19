@@ -6,6 +6,11 @@ import random
 import time
 import torch
 from os import path as osp
+import os
+import sys
+
+# sys.path.remove('/home/ohjinjin/EFNet')
+sys.path.insert(0, '/home/ohjinjin/EFNet_add_of/EFNet/')
 
 from basicsr.data import create_dataloader, create_dataset
 from basicsr.data.data_sampler import EnlargedSampler
@@ -32,7 +37,7 @@ def parse_options(is_train=True):
         help='job launcher')
     parser.add_argument('--local-rank', type=int, default=0)
     args = parser.parse_args()
-    opt = parse(args.opt, is_train=is_train)
+    opt = parse(osp.abspath(args.opt), is_train=is_train)
 
     # distributed settings
     if args.launcher == 'none':
