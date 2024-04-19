@@ -56,7 +56,7 @@ class EFNet(nn.Module):
         self.conv_02 = nn.Conv2d(in_chn, wf, 3, 1, 1)
         # event
         self.down_path_ev = nn.ModuleList()
-        self.conv_ev1 = nn.Conv2d(ev_chn, wf, 3, 1, 1)
+        self.conv_ev1 = nn.Conv2d(ev_chn+2, wf, 3, 1, 1)  # event voxel + flow estimation
 
         prev_channels = self.get_input_chn(wf)
         for i in range(depth):

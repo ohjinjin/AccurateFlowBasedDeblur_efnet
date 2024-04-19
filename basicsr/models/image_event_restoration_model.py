@@ -96,6 +96,7 @@ class ImageEventRestorationModel(BaseModel):
     def feed_data(self, data):
 
         self.lq = data['frame'].to(self.device)
+        self.flow = data['flow'].to(self.device)
         self.voxel=data['voxel'].to(self.device) 
         if 'mask' in data:
             self.mask = data['mask'].to(self.device)
@@ -257,20 +258,86 @@ class ImageEventRestorationModel(BaseModel):
 
         self.output = preds / count_mt
         self.lq = self.origin_lq
+        self.flow = self.origin_flow
         self.voxel = self.origin_voxel
+        
+    def grids_flow(self):
+        b, c, h, w = self.flow.size()  # flow is after data augment (for example, crop, if have)
+        self.original_size_flow = self.flow.size()
+        assert b == 1
+        crop_size = self.opt['val'].get('crop_size')
+        # step_j = self.opt['val'].get('step_j', crop_size)
+        # step_i = self.opt['val'].get('step_i', crop_size)
+        ##adaptive step_i, step_j
+        num_row = (h - 1) // crop_size + 1
+        num_col = (w - 1) // crop_size + 1
+
+        import math
+        step_j = crop_size if num_col == 1 else math.ceil((w - crop_size) / (num_col - 1) - 1e-8)
+        step_i = crop_size if num_row == 1 else math.ceil((h - crop_size) / (num_row - 1) - 1e-8)
+
+
+        # print('step_i, stepj', step_i, step_j)
+        # exit(0)
+
+
+        parts = []
+        idxes = []
+
+        # cnt_idx = 0
+
+        i = 0  # 0~h-1
+        last_i = False
+        while i < h and not last_i:
+            j = 0
+            if i + crop_size >= h:
+                i = h - crop_size
+                last_i = True
+
+
+            last_j = False
+            while j < w and not last_j:
+                if j + crop_size >= w:
+                    j = w - crop_size
+                    last_j = True
+                # from i, j to i+crop_szie, j + crop_size
+                # print(' trans 8')
+                for trans_idx in range(self.opt['val'].get('trans_num', 1)):
+                    parts.append(self.transpose(self.flow[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                    idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+                    # cnt_idx += 1
+                j = j + step_j
+            i = i + step_i
+        if self.opt['val'].get('random_crop_num', 0) > 0:
+            for _ in range(self.opt['val'].get('random_crop_num')):
+                import random
+                i = random.randint(0, h-crop_size)
+                j = random.randint(0, w-crop_size)
+                trans_idx = random.randint(0, self.opt['val'].get('trans_num', 1) - 1)
+                parts.append(self.transpose(self.flow[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+
+
+        self.origin_flow = self.flow
+        self.flow = torch.cat(parts, dim=0)
+        # print('parts .. ', len(parts), self.flow.size())
+        self.idxes = idxes
 
 
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
 
+#         print("CHECK JINJIN:", self.voxel.shape, self.flow.shape)
+        self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
+#         print("CHECK INPUT SHAPE:", input_event_flow.shape)
         if self.opt['datasets']['train'].get('use_mask'):
-            preds = self.net_g(x = self.lq, event = self.voxel, mask = self.mask)
+            preds = self.net_g(x = self.lq, event = self.input_event_flow, mask = self.mask)
 
         elif self.opt['datasets']['train'].get('return_ren'):
-            preds = self.net_g(x = self.lq, event = self.voxel, ren = self.ren)
+            preds = self.net_g(x = self.lq, event = self.input_event_flow, ren = self.ren)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.voxel)
+            preds = self.net_g(x = self.lq, event = self.input_event_flow)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -327,6 +394,7 @@ class ImageEventRestorationModel(BaseModel):
     def test(self):
         self.net_g.eval()
         with torch.no_grad():
+            self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
             n = self.lq.size(0)  # n: batch size
             outs = []
             m = self.opt['val'].get('max_minibatch', n)  # m is the minibatch, equals to batch size or mini batch size
@@ -337,13 +405,13 @@ class ImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['val'].get('use_mask'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 elif self.opt['datasets']['val'].get('return_ren'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], ren = self.ren[i:j,:])
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], ren = self.ren[i:j,:])
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :])  # mini batch all in 
             
                 if isinstance(pred, list):
                     pred = pred[-1]
@@ -353,21 +421,22 @@ class ImageEventRestorationModel(BaseModel):
             self.output = torch.cat(outs, dim=0)  # all mini batch cat in dim0
         self.net_g.train()
 
-    def single_image_inference(self, img, voxel, save_path):
-        self.feed_data(data={'frame': img.unsqueeze(dim=0), 'voxel': voxel.unsqueeze(dim=0)})
-        if self.opt['val'].get('grids') is not None:
-            self.grids()
-            self.grids_voxel()
+#     def single_image_inference(self, img, voxel, save_path):
+#         self.feed_data(data={'frame': img.unsqueeze(dim=0), 'voxel': voxel.unsqueeze(dim=0)})
+#         if self.opt['val'].get('grids') is not None:
+#             self.grids()
+#             self.grids_flow()
+#             self.grids_voxel()
 
-        self.test()
+#         self.test()
 
-        if self.opt['val'].get('grids') is not None:
-            self.grids_inverse()
-            # self.grids_inverse_voxel()
+#         if self.opt['val'].get('grids') is not None:
+#             self.grids_inverse()
+#             # self.grids_inverse_voxel()
 
-        visuals = self.get_current_visuals()
-        sr_img = tensor2img([visuals['result']])
-        imwrite(sr_img, save_path)
+#         visuals = self.get_current_visuals()
+#         sr_img = tensor2img([visuals['result']])
+#         imwrite(sr_img, save_path)
 
     def dist_validation(self, dataloader, current_iter, tb_logger, save_img, rgb2bgr, use_image):
         logger = get_root_logger()
@@ -398,6 +467,7 @@ class ImageEventRestorationModel(BaseModel):
             self.feed_data(val_data)
             if self.opt['val'].get('grids') is not None:
                 self.grids()
+                self.grids_flow()
                 self.grids_voxel()
 
             self.test()

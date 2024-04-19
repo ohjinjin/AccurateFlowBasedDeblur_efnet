@@ -90,9 +90,17 @@ class H5ImageDataset(data.Dataset):
             self.h5_file = h5py.File(self.data_path, 'r')
         return self.h5_file['masks']['mask{:09d}'.format(index)][:]
 
+    def get_flow(self, index):
+        """
+        Get flow at index
+        @param index The index of the flow to get
+        """
+        if self.h5_file is None:
+            self.h5_file = h5py.File(self.data_path, 'r')
+        return self.h5_file['flows']['flow{:09d}'.format(index)][:]
 
     def __init__(self, opt, data_path, return_voxel=True, return_frame=True, return_gt_frame=True,
-            return_mask=False, norm_voxel=True):
+            return_mask=False, return_flow=False, norm_voxel=True):
 
         super(H5ImageDataset, self).__init__()
         self.opt = opt
@@ -106,6 +114,7 @@ class H5ImageDataset(data.Dataset):
         self.return_gt_frame = opt.get('return_gt_frame', return_gt_frame)
         self.return_voxel = opt.get('return_voxel', return_voxel)
         self.return_mask = opt.get('return_mask', return_mask)
+        self.return_flow = opt.get('return_flow', return_flow)
         
         self.norm_voxel = norm_voxel # -MAX~MAX -> -1 ~ 1 
         self.h5_file = None
@@ -161,12 +170,15 @@ class H5ImageDataset(data.Dataset):
         seed = random.randint(0, 2 ** 32) if seed is None else seed
         item={}
         frame = self.get_frame(index)
+        flow = self.get_flow(index)
         if self.return_gt_frame:
             frame_gt = self.get_gt_frame(index)
             frame_gt = self.transform_frame(frame_gt, seed, transpose_to_CHW=False)
 
         voxel = self.get_voxel(index)
         frame = self.transform_frame(frame, seed, transpose_to_CHW=False)  # to tensor
+        flow = self.transform_flow_frame(flow, seed, transpose_to_CHW=False)
+        
 
         # normalize RGB
         if self.mean is not None or self.std is not None:
@@ -183,6 +195,8 @@ class H5ImageDataset(data.Dataset):
         if self.return_mask:
             mask = self.get_mask(index)
             item['mask'] = self.transform_frame(mask, seed, transpose_to_CHW=False)
+        if self.return_flow:
+            item['flow'] = flow
             
         item['seq'] = self.seq_name
 
@@ -192,7 +206,21 @@ class H5ImageDataset(data.Dataset):
 
     def __len__(self):
         return self.dataset_len
-
+    
+    def transform_flow_frame(self, frame, seed, transpose_to_CHW=False):
+        """
+        Augment frame and turn into tensor
+        @param frame Input frame
+        @param seed  Seed for random number generation
+        @returns Augmented frame
+        """
+        if self.return_format == "torch":
+            frame = torch.from_numpy(frame).float()
+            if self.transform:
+                random.seed(seed)
+                frame = self.transform(frame)
+        return frame
+    
     def transform_frame(self, frame, seed, transpose_to_CHW=False):
         """
         Augment frame and turn into tensor
