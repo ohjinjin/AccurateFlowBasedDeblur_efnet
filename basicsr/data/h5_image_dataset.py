@@ -71,6 +71,24 @@ class H5ImageDataset(data.Dataset):
         if self.h5_file is None:
             self.h5_file = h5py.File(self.data_path, 'r')
         return self.h5_file['sharp_images']['image{:09d}'.format(index)][:]
+    
+    def get_prev_frame(self, index):
+        """
+        Get prev frame at index
+        @param index: The index of the prev frame to get
+        """
+        if self.h5_file is None:
+            self.h5_file = h5py.File(self.data_path, 'r')
+        return self.h5_file['sharp_images_prev']['image{:09d}'.format(index)][:]
+    
+    def get_next_frame(self, index):
+        """
+        Get next frame at index
+        @param index: The index of the next frame to get
+        """
+        if self.h5_file is None:
+            self.h5_file = h5py.File(self.data_path, 'r')
+        return self.h5_file['sharp_images_next']['image{:09d}'.format(index)][:]
 
     def get_voxel(self, index):
         """
@@ -92,7 +110,7 @@ class H5ImageDataset(data.Dataset):
 
 
     def __init__(self, opt, data_path, return_voxel=True, return_frame=True, return_gt_frame=True,
-            return_mask=False, norm_voxel=True):
+            return_mask=False, norm_voxel=True, return_prev_frame=True, return_next_frame=True):
 
         super(H5ImageDataset, self).__init__()
         self.opt = opt
@@ -104,6 +122,8 @@ class H5ImageDataset(data.Dataset):
         self.return_voxel = return_voxel
         self.return_frame = return_frame
         self.return_gt_frame = opt.get('return_gt_frame', return_gt_frame)
+        self.return_prev_frame = opt.get('return_prev_frame', return_prev_frame)
+        self.return_next_frame = opt.get('return_next_frame', return_next_frame)
         self.return_voxel = opt.get('return_voxel', return_voxel)
         self.return_mask = opt.get('return_mask', return_mask)
         
@@ -164,6 +184,12 @@ class H5ImageDataset(data.Dataset):
         if self.return_gt_frame:
             frame_gt = self.get_gt_frame(index)
             frame_gt = self.transform_frame(frame_gt, seed, transpose_to_CHW=False)
+        if self.return_prev_frame:
+            frame_prev = self.get_prev_frame(index)
+            frame_prev = self.transform_frame(frame_prev, seed, transpose_to_CHW=False)
+        if self.return_next_frame:
+            frame_next = self.get_next_frame(index)
+            frame_next = self.transform_frame(frame_next, seed, transpose_to_CHW=False)
 
         voxel = self.get_voxel(index)
         frame = self.transform_frame(frame, seed, transpose_to_CHW=False)  # to tensor
@@ -178,6 +204,10 @@ class H5ImageDataset(data.Dataset):
             item['frame'] = frame
         if self.return_gt_frame:
             item['frame_gt'] = frame_gt
+        if self.return_prev_frame:
+            item['frame_prev'] = frame_prev
+        if self.return_next_frame:
+            item['frame_next'] = frame_next
         if self.return_voxel:
             item['voxel'] = self.transform_voxel(voxel, seed, transpose_to_CHW=False)
         if self.return_mask:

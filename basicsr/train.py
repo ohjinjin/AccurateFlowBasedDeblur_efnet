@@ -10,7 +10,8 @@ import os
 import sys
 
 # sys.path.remove('/home/ohjinjin/EFNet')
-sys.path.insert(0, '/home/ohjinjin/EFNet_add_of/EFNet/')
+# sys.path.remove('/home/ohjinjin/EFNet/')
+sys.path.insert(0, '/home/ohjinjin/EFNet_bi_gt_of/EFNet/')
 
 from basicsr.data import create_dataloader, create_dataset
 from basicsr.data.data_sampler import EnlargedSampler
@@ -137,8 +138,8 @@ def main():
     # parse options, set distributed setting, set ramdom seed
     opt = parse_options(is_train=True)
 
-    torch.backends.cudnn.benchmark = True
-    # torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
     # automatic resume ..
     state_folder_path = 'experiments/{}/training_states/'.format(opt['name'])
@@ -222,6 +223,10 @@ def main():
 
         while train_data is not None:
             data_time = time.time() - data_time
+            # save models and training states
+            if current_iter == 0:
+                logger.info('Saving models and training states.')
+                model.save(epoch, current_iter)
 
             current_iter += 1
             if current_iter > total_iters:

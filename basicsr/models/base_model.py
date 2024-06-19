@@ -265,6 +265,16 @@ class BaseModel():
                 Default: 'params'.
         """
         net = self.get_bare_model(net)
+#         for name, param in net.state_dict().items():
+#             if name == 'down_path_1.0.identity.weight':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
+#             if name == 'down_path_1.0.identity.bias':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
+#             if name == 'conv_ev1.weight':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
+#             if name == 'conv_ev1.bias':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
+        
         logger.info(
             f'Loading {net.__class__.__name__} model from {load_path}.')
         load_net = torch.load(
@@ -278,7 +288,33 @@ class BaseModel():
                 load_net[k[7:]] = v
                 load_net.pop(k)
         self._print_different_keys_loading(net, load_net, strict)
-        net.load_state_dict(load_net, strict=strict)
+
+        # 기존의 conv_ev1.weight와 conv_ev1.bias 가중치들을 유지하기 위해 제외 리스트 생성
+        exclude_keys = ['down_path_ev.2.identity.weight', 'down_path_ev.2.identity.bias'\
+                        , 'down_path_ev.2.conv_1.weight', 'down_path_ev.2.conv_1.bias'\
+                        , 'down_path_ev.2.conv_2.weight', 'down_path_ev.2.conv_2.bias'\
+                        , 'down_path_ev.2.conv_before_merge.weight', 'down_path_ev.2.conv_before_merge.bias'\
+                        , 'conv_ev1.weight', 'conv_ev1.bias']
+
+        # exclude_keys에 해당하는 가중치를 제외한 파라미터만 복사
+        filtered_state_dict = {name: param for name, param in load_net.items() if name not in exclude_keys}
+
+# #         state_dict = net.state_dict()
+#         filtered_state_dict = {name: param for name, param in load_net.items()
+#                                if name != 'conv_ev1.weight' and
+#                                name != 'conv_ev1.bias'}
+
+        net.load_state_dict(filtered_state_dict, strict=not strict)
+#         print("==============================================================")
+#         for name, param in net.state_dict().items():
+#             if name == 'down_path_1.0.identity.weight':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
+#             if name == 'down_path_1.0.identity.bias':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
+#             if name == 'conv_ev1.weight':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
+#             if name == 'conv_ev1.bias':
+#                 print(f"JINJIN CHECK:\n parameter name:{name}, size: {param.size()}, params: {param}")
 
     @master_only
     def save_training_state(self, epoch, current_iter):
