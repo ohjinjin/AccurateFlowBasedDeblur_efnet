@@ -224,9 +224,9 @@ def main():
         while train_data is not None:
             data_time = time.time() - data_time
             # save models and training states
-            if current_iter == 0:
-                logger.info('Saving models and training states.')
-                model.save(epoch, current_iter)
+            #if current_iter == 0:
+            #    logger.info('Saving models and training states.')
+            #    model.save(epoch, current_iter)
 
             current_iter += 1
             if current_iter > total_iters:

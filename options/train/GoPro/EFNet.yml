@@ -65,7 +65,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: ./experiments/pretrained_models/EFNet-GoPro.pth
+  pretrain_network_g: ~ #./experiments/pretrained_models/EFNet-GoPro.pth
   strict_load_g: true
   resume_state: ~
   training_states: ~ # save current trainig model states, for resume
