@@ -5,6 +5,9 @@ from copy import deepcopy
 from os import path as osp
 from tqdm import tqdm
 
+from torchvision.models.optical_flow import raft_large
+import torchvision.transforms as T
+
 from basicsr.models.archs import define_network
 from basicsr.models.base_model import BaseModel
 from basicsr.utils import get_root_logger, imwrite, tensor2img
@@ -18,7 +21,10 @@ class TestImageEventRestorationModel(BaseModel):
 
     def __init__(self, opt):
         super(TestImageEventRestorationModel, self).__init__(opt)
-
+        
+        self.raft_model = raft_large(pretrained=True, progress=False).to(self.device)
+        self.raft_model = self.raft_model.eval()
+        
         # define network
         self.net_g = define_network(deepcopy(opt['network_g']))
         self.net_g = self.model_to_device(self.net_g)
@@ -95,7 +101,24 @@ class TestImageEventRestorationModel(BaseModel):
         # print(self.optimizer_g)
         # exit(0)
 
+    def preprocess(self, batch):
+        transforms = T.Compose(
+            [
+                T.ConvertImageDtype(torch.float32),
+                T.Normalize(mean=0.5, std=0.5),  # map [0, 1] into [-1, 1]
+    #             T.Resize(size=(520, 960)),
+            ]
+        )
+        batch = transforms(batch)
+        return batch
+    
     def feed_data(self, data):
+        img0 = self.preprocess(data['frame_prev']).to(self.device)
+        img1 = self.preprocess(data['frame_gt']).to(self.device)
+        img2 = self.preprocess(data['frame_next']).to(self.device)
+
+        self.flow10 = self.raft_model(img1, img0)[-1]
+        self.flow12 = self.raft_model(img1, img2)[-1]
 
         self.lq = data['frame'].to(self.device)
         self.voxel=data['voxel'].to(self.device)
@@ -259,6 +282,130 @@ class TestImageEventRestorationModel(BaseModel):
         # print('parts .. ', len(parts), self.lq.size())
         self.idxes = idxes
 
+    def grids_flow10(self):
+        b, c, h, w = self.flow10.size()  # lq is after data augment (for example, crop, if have)
+        self.original_size_flow10 = self.flow10.size()
+        assert b == 1
+        crop_size = self.opt['val'].get('crop_size')
+        # step_j = self.opt['val'].get('step_j', crop_size)
+        # step_i = self.opt['val'].get('step_i', crop_size)
+        ##adaptive step_i, step_j
+        num_row = (h - 1) // crop_size + 1
+        num_col = (w - 1) // crop_size + 1
+
+        import math
+        step_j = crop_size if num_col == 1 else math.ceil((w - crop_size) / (num_col - 1) - 1e-8)
+        step_i = crop_size if num_row == 1 else math.ceil((h - crop_size) / (num_row - 1) - 1e-8)
+
+
+        # print('step_i, stepj', step_i, step_j)
+        # exit(0)
+
+
+        parts = []
+        idxes = []
+
+        # cnt_idx = 0
+
+        i = 0  # 0~h-1
+        last_i = False
+        while i < h and not last_i:
+            j = 0
+            if i + crop_size >= h:
+                i = h - crop_size
+                last_i = True
+
+
+            last_j = False
+            while j < w and not last_j:
+                if j + crop_size >= w:
+                    j = w - crop_size
+                    last_j = True
+                # from i, j to i+crop_szie, j + crop_size
+                # print(' trans 8')
+                for trans_idx in range(self.opt['val'].get('trans_num', 1)):
+                    parts.append(self.transpose(self.flow10[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                    idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+                    # cnt_idx += 1
+                j = j + step_j
+            i = i + step_i
+        if self.opt['val'].get('random_crop_num', 0) > 0:
+            for _ in range(self.opt['val'].get('random_crop_num')):
+                import random
+                i = random.randint(0, h-crop_size)
+                j = random.randint(0, w-crop_size)
+                trans_idx = random.randint(0, self.opt['val'].get('trans_num', 1) - 1)
+                parts.append(self.transpose(self.flow10[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+
+
+        self.origin_flow10 = self.flow10
+        self.flow10 = torch.cat(parts, dim=0)
+        # print('parts .. ', len(parts), self.lq.size())
+        self.idxes = idxes
+
+    def grids_flow12(self):
+        b, c, h, w = self.flow12.size()  # lq is after data augment (for example, crop, if have)
+        self.original_size_flow12 = self.flow12.size()
+        assert b == 1
+        crop_size = self.opt['val'].get('crop_size')
+        # step_j = self.opt['val'].get('step_j', crop_size)
+        # step_i = self.opt['val'].get('step_i', crop_size)
+        ##adaptive step_i, step_j
+        num_row = (h - 1) // crop_size + 1
+        num_col = (w - 1) // crop_size + 1
+
+        import math
+        step_j = crop_size if num_col == 1 else math.ceil((w - crop_size) / (num_col - 1) - 1e-8)
+        step_i = crop_size if num_row == 1 else math.ceil((h - crop_size) / (num_row - 1) - 1e-8)
+
+
+        # print('step_i, stepj', step_i, step_j)
+        # exit(0)
+
+
+        parts = []
+        idxes = []
+
+        # cnt_idx = 0
+
+        i = 0  # 0~h-1
+        last_i = False
+        while i < h and not last_i:
+            j = 0
+            if i + crop_size >= h:
+                i = h - crop_size
+                last_i = True
+
+
+            last_j = False
+            while j < w and not last_j:
+                if j + crop_size >= w:
+                    j = w - crop_size
+                    last_j = True
+                # from i, j to i+crop_szie, j + crop_size
+                # print(' trans 8')
+                for trans_idx in range(self.opt['val'].get('trans_num', 1)):
+                    parts.append(self.transpose(self.flow12[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                    idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+                    # cnt_idx += 1
+                j = j + step_j
+            i = i + step_i
+        if self.opt['val'].get('random_crop_num', 0) > 0:
+            for _ in range(self.opt['val'].get('random_crop_num')):
+                import random
+                i = random.randint(0, h-crop_size)
+                j = random.randint(0, w-crop_size)
+                trans_idx = random.randint(0, self.opt['val'].get('trans_num', 1) - 1)
+                parts.append(self.transpose(self.flow12[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+
+
+        self.origin_flow12 = self.flow10
+        self.flow12 = torch.cat(parts, dim=0)
+        # print('parts .. ', len(parts), self.lq.size())
+        self.idxes = idxes
+        
     def grids_inverse(self):
         preds = torch.zeros(self.original_size).to(self.device)
         b, c, h, w = self.original_size
@@ -278,18 +425,22 @@ class TestImageEventRestorationModel(BaseModel):
         self.output = preds / count_mt
         self.lq = self.origin_lq
         self.voxel = self.origin_voxel
+        self.flow10 = self.origin_flow10
+        self.flow12 = self.origin_flow12
 
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
+        
+        self.input_event_bi_flow = torch.cat((torch.cat((self.voxel, self.flow10), dim=1), self.flow12), dim=1)
         # preds = self.net_g(self.lq)
         if self.opt['datasets']['train'].get('use_mask'):
             # print('NETWORK TRAIN USE MASK')
             # print('MASK.SHAPE:{}'.format(self.mask.shape))
             # print('MASK:{}'.format(self.mask))
-            preds = self.net_g(x = self.lq, event = self.voxel, mask = self.mask)
+            preds = self.net_g(x = self.lq, event = self.input_event_bi_flow, mask = self.mask)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.voxel)
+            preds = self.net_g(x = self.lq, event = self.input_event_bi_flow)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -343,6 +494,7 @@ class TestImageEventRestorationModel(BaseModel):
     def test(self):
         self.net_g.eval()
         with torch.no_grad():
+            self.input_event_bi_flow = torch.cat((torch.cat((self.voxel, self.flow10), dim=1), self.flow12), dim=1)
             n = self.lq.size(0)  # n: batch size
             outs = []
             m = self.opt['val'].get('max_minibatch', n)  # m is the minibatch, equals to batch size or mini batch size
@@ -353,10 +505,10 @@ class TestImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['test'].get('use_mask', False):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_bi_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_bi_flow[i:j, :, :, :])  # mini batch all in 
 
                 if isinstance(pred, list):
                     pred = pred[-1]
@@ -423,6 +575,8 @@ class TestImageEventRestorationModel(BaseModel):
             if self.opt['val'].get('grids') is not None:
                 self.grids()
                 self.grids_voxel()
+                self.grids_flow10()
+                self.grids_flow12()
 
             self.test()
 

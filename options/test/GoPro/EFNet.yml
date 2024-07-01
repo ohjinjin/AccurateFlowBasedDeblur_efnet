@@ -17,6 +17,8 @@ datasets:
     norm_voxel: true
     return_voxel: true
     return_gt_frame: true
+    return_prev_frame: true
+    return_next_frame: true
     return_mask: true 
     use_mask: true 
 
@@ -37,7 +39,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: ./experiments/pretrained_models/EFNet-GoPro.pth
+  pretrain_network_g: ./experiments/final_trial_batch32/EFNet_experiment/models/net_g_300000.pth #./experiments/pretrained_models/EFNet-GoPro.pth
   strict_load_g: true
   resume_state: ~
   root: ./experiments/  # set this option ONLY in TEST!!!

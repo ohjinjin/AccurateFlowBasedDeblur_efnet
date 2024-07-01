@@ -1,7 +1,11 @@
 import logging
 import torch
 from os import path as osp
+import sys
 
+# sys.path.remove('/home/ohjinjin/EFNet')
+# sys.path.remove('/home/ohjinjin/EFNet/')
+sys.path.insert(0, '/home/ohjinjin/EFNet_bi_gt_of/EFNet/')
 from basicsr.data import create_dataloader, create_dataset
 from basicsr.models import create_model
 from basicsr.train import parse_options
@@ -14,8 +18,8 @@ def main():
     # parse options, set distributed setting, set ramdom seed
     opt = parse_options(is_train=False)
 
-    torch.backends.cudnn.benchmark = True
-    # torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
     # mkdir and initialize loggers
     make_exp_dirs(opt)
