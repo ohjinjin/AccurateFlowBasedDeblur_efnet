@@ -56,7 +56,7 @@ class EFNet(nn.Module):
         self.conv_02 = nn.Conv2d(in_chn, wf, 3, 1, 1)
         # event
         self.down_path_ev = nn.ModuleList()
-        self.conv_ev1 = nn.Conv2d(ev_chn+4, wf, 3, 1, 1)  # event voxel + bi directional pseudo gt flows
+        self.conv_ev1 = nn.Conv2d(ev_chn+2, wf, 3, 1, 1)  # event voxel + (0->2) pseudo gt flows
 
         prev_channels = self.get_input_chn(wf)
         for i in range(depth):

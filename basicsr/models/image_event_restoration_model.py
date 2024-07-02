@@ -7,6 +7,9 @@ from tqdm import tqdm
 
 from torchvision.models.optical_flow import raft_large
 import torchvision.transforms as T
+# from torchvision.utils import save_image, flow_to_image
+# import numpy as np
+# import matplotlib.pyplot as plt
 
 from basicsr.models.archs import define_network
 from basicsr.models.base_model import BaseModel
@@ -119,19 +122,335 @@ class ImageEventRestorationModel(BaseModel):
         img0 = self.preprocess(data['frame_prev']).to(self.device)
         img1 = self.preprocess(data['frame_gt']).to(self.device)
         img2 = self.preprocess(data['frame_next']).to(self.device)
-        
-        self.flow10 = self.raft_model(img1, img0)[-1]
-        self.flow12 = self.raft_model(img1, img2)[-1]
+#         print("CHECKKKK:::::::::::", img0.shape)
+#         self.flow10 = self.raft_model(img1, img0)[-1]
+#         self.flow12 = self.raft_model(img1, img2)[-1]
+        self.flow02 = self.raft_model(img0, img2)[-1]
 #         print("CEHCK JINJIN::::", self.flow10.shape, self.flow12.shape)
         
         self.lq = data['frame'].to(self.device)
+#         lq_bgr = self.lq[:, [2, 1, 0], :, :]
+#         img0_bgr = (img0[:, [2, 1, 0], :, :] + 1) / 2.0
+#         img1_bgr = (img1[:, [2, 1, 0], :, :] + 1) / 2.0
+#         img2_bgr = (img2[:, [2, 1, 0], :, :] + 1) / 2.0
+        
+#         # 각 이미지를 개별적으로 저장
+#         import os
+
+#         for i in range(lq_bgr.size(0)):
+#             if not os.path.exists(f'/home/ohjinjin/{self.lq.device}_blur_image_{i}.png'):
+#                 save_image(lq_bgr[i], f'/home/ohjinjin/{self.lq.device}_blur_image_{i}.png')
+#         for i in range(img0_bgr.size(0)):
+#             if not os.path.exists(f'/home/ohjinjin/{img0.device}_prev_image_{i}.png'):
+#                 save_image(img0_bgr[i], f'/home/ohjinjin/{img0.device}_prev_image_{i}.png')
+#         for i in range(img1_bgr.size(0)):
+#             if not os.path.exists(f'/home/ohjinjin/{img1.device}_sharp_image_{i}.png'):
+#                 save_image(img1_bgr[i], f'/home/ohjinjin/{img1.device}_sharp_image_{i}.png')
+#         for i in range(img2_bgr.size(0)):
+#             if not os.path.exists(f'/home/ohjinjin/{img2.device}_next_image_{i}.png'):
+#                 save_image(img2_bgr[i], f'/home/ohjinjin/{img2.device}_next_image_{i}.png')
+                
+#         flow_image10 = flow_to_image(self.flow10)/255.0
+#         flow_image12 = flow_to_image(self.flow12)/255.0
+# #         flow_image10 = flow_image10_.to(torch.uint8)
+# #         flow_image12 = flow_image12_.to(torch.uint8)
+# #         print("CHCHCHCH::", img0.min())
+# #         print("CHCHCHCH::", img0.max())
+# #         print("CHCHCHCH::", self.lq.min())
+# #         print("CHCHCHCH::", self.lq.max())
+#         for i in range(flow_image10.size(0)):
+#             if not os.path.exists(f'/home/ohjinjin/{self.flow10.device}_flow10_{i}.png'):
+#                 save_image(flow_image10[i], f'/home/ohjinjin/{self.flow10.device}_flow10_{i}.png')
+#         for i in range(flow_image12.size(0)):
+#             if not os.path.exists(f'/home/ohjinjin/{self.flow12.device}_flow12_{i}.png'):
+#                 save_image(flow_image12[i], f'/home/ohjinjin/{self.flow12.device}_flow12_{i}.png')
+        
+
 #         print("CHECK JINJIN1:::", type(data['frame_prev']), data['frame_prev'].shape, data['frame'].shape)
         # CHECK JINJIN1::: <class 'torch.Tensor'> torch.Size([4, 3, 256, 256]) torch.Size([4, 3, 256, 256])
 
         
 #         self.flow_01 = data['frame_prev'],data['frame_gt']
 #         self.flow_10 = data['frame_gt'],data['frame_next']
-        self.voxel=data['voxel'].to(self.device) 
+        self.voxel=data['voxel'].to(self.device)  # torch.Size([B, 6, 256, 256])
+#         print("CHECK SIZE::::", self.voxel.size(0))
+# #         print("CHECK::::::", torch.unique(self.voxel[:,0,:,:]))
+# #         print("CHECK::::::", torch.unique(self.voxel[:,1,:,:]))
+# #         print("CHECK::::::", torch.unique(self.voxel))
+#         for i in range(self.voxel.size(0)):
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay10_v0_{i}.png'):
+#                 voxel_image = self.voxel[i, 0, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image10[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay10_v0_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v0_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay10_v1_{i}.png'):
+#                 voxel_image = self.voxel[i, 1, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image10[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay10_v1_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v1_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay10_v2_{i}.png'):
+#                 voxel_image = self.voxel[i, 2, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image10[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay10_v2_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v2_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay10_v3_{i}.png'):
+#                 voxel_image = self.voxel[i, 3, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image10[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay10_v3_{i}.png', bbox_inches='tight', pad_inches=0)
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v3_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay10_v4_{i}.png'):
+#                 voxel_image = self.voxel[i, 4, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image10[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay10_v4_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v4_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay10_v5_{i}.png'):
+#                 voxel_image = self.voxel[i, 5, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image10[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay10_v5_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v5_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay12_v0_{i}.png'):
+#                 voxel_image = self.voxel[i, 0, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image12[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay12_v0_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v0_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay12_v1_{i}.png'):
+#                 voxel_image = self.voxel[i, 1, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image12[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay12_v1_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v1_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay12_v2_{i}.png'):
+#                 voxel_image = self.voxel[i, 2, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image12[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay12_v2_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v2_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay12_v3_{i}.png'):
+#                 voxel_image = self.voxel[i, 3, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image12[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay12_v3_{i}.png', bbox_inches='tight', pad_inches=0)
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v3_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay12_v4_{i}.png'):
+#                 voxel_image = self.voxel[i, 4, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image12[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay12_v4_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v4_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+#             if not os.path.exists(f'/home/ohjinjin/{self.voxel.device}_overlay12_v5_{i}.png'):
+#                 voxel_image = self.voxel[i, 5, :, :].cpu().numpy()  # 각 배치의 첫 번째 채널 (256, 256)
+#                 flow_image = flow_image12[i].cpu().numpy().transpose(1, 2, 0)  # (256, 256, 3)
+
+#                 # 이미지 오버레이
+#                 fig, ax = plt.subplots()
+#                 ax.imshow(voxel_image, cmap='bwr', vmin=-1, vmax=1)  # voxel 이미지
+#                 ax.imshow(flow_image, alpha=0.5)  # flow 이미지 오버레이
+
+#                 # 이미지 저장
+# #                 overlay_filename = os.path.join(output_dir, f'{self.flow10.device}_overlay_{i}.png')
+#                 plt.axis('off')  # 축 숨기기
+#                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay12_v5_{i}.png', bbox_inches='tight', pad_inches=0)
+#                 plt.close()
+
+# #                 # 이미지 저장
+# # #                 filename = os.path.join(output_dir, f'image_batch_{i}.png')
+# #                 plt.imshow(batch_image, cmap='bwr', vmin=-1, vmax=1)
+# # #                 plt.colorbar()  # 컬러바 추가
+# #                 plt.axis('off')  # 축 숨기기
+# #                 plt.savefig(f'/home/ohjinjin/{self.voxel.device}_overlay_v5_{i}.png', bbox_inches='tight', pad_inches=0)
+# #                 plt.close()
+#                 print(f'Saved')
+        
         if 'mask' in data:
             self.mask = data['mask'].to(self.device)
         if 'frame_gt' in data:
@@ -274,6 +593,68 @@ class ImageEventRestorationModel(BaseModel):
         # print('parts .. ', len(parts), self.lq.size())
         self.idxes = idxes
     
+    def grids_flow02(self):
+        b, c, h, w = self.flow02.size()  # lq is after data augment (for example, crop, if have)
+        self.original_size_flow02 = self.flow02.size()
+        assert b == 1
+        crop_size = self.opt['val'].get('crop_size')
+        # step_j = self.opt['val'].get('step_j', crop_size)
+        # step_i = self.opt['val'].get('step_i', crop_size)
+        ##adaptive step_i, step_j
+        num_row = (h - 1) // crop_size + 1
+        num_col = (w - 1) // crop_size + 1
+
+        import math
+        step_j = crop_size if num_col == 1 else math.ceil((w - crop_size) / (num_col - 1) - 1e-8)
+        step_i = crop_size if num_row == 1 else math.ceil((h - crop_size) / (num_row - 1) - 1e-8)
+
+
+        # print('step_i, stepj', step_i, step_j)
+        # exit(0)
+
+
+        parts = []
+        idxes = []
+
+        # cnt_idx = 0
+
+        i = 0  # 0~h-1
+        last_i = False
+        while i < h and not last_i:
+            j = 0
+            if i + crop_size >= h:
+                i = h - crop_size
+                last_i = True
+
+
+            last_j = False
+            while j < w and not last_j:
+                if j + crop_size >= w:
+                    j = w - crop_size
+                    last_j = True
+                # from i, j to i+crop_szie, j + crop_size
+                # print(' trans 8')
+                for trans_idx in range(self.opt['val'].get('trans_num', 1)):
+                    parts.append(self.transpose(self.flow02[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                    idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+                    # cnt_idx += 1
+                j = j + step_j
+            i = i + step_i
+        if self.opt['val'].get('random_crop_num', 0) > 0:
+            for _ in range(self.opt['val'].get('random_crop_num')):
+                import random
+                i = random.randint(0, h-crop_size)
+                j = random.randint(0, w-crop_size)
+                trans_idx = random.randint(0, self.opt['val'].get('trans_num', 1) - 1)
+                parts.append(self.transpose(self.flow02[:, :, i:i + crop_size, j:j + crop_size], trans_idx))
+                idxes.append({'i': i, 'j': j, 'trans_idx': trans_idx})
+
+
+        self.origin_flow02 = self.flow02
+        self.flow02 = torch.cat(parts, dim=0)
+        # print('parts .. ', len(parts), self.lq.size())
+        self.idxes = idxes
+        
     def grids_flow10(self):
         b, c, h, w = self.flow10.size()  # lq is after data augment (for example, crop, if have)
         self.original_size_flow10 = self.flow10.size()
@@ -417,23 +798,24 @@ class ImageEventRestorationModel(BaseModel):
         self.output = preds / count_mt
         self.lq = self.origin_lq
         self.voxel = self.origin_voxel
-        self.flow10 = self.origin_flow10
-        self.flow12 = self.origin_flow12
+#         self.flow10 = self.origin_flow10
+#         self.flow12 = self.origin_flow12
+        self.flow02 = self.origin_flow02
 
 
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
         
-        self.input_event_bi_flow = torch.cat((torch.cat((self.voxel, self.flow10), dim=1), self.flow12), dim=1)
+        self.input_event_flow = torch.cat((self.voxel, self.flow02), dim=1)
 
         if self.opt['datasets']['train'].get('use_mask'):
-            preds = self.net_g(x = self.lq, event = self.input_event_bi_flow, mask = self.mask)
+            preds = self.net_g(x = self.lq, event = self.input_event_flow, mask = self.mask)
 
         elif self.opt['datasets']['train'].get('return_ren'):
-            preds = self.net_g(x = self.lq, event = self.input_event_bi_flow, ren = self.ren)
+            preds = self.net_g(x = self.lq, event = self.input_event_flow, ren = self.ren)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.input_event_bi_flow)
+            preds = self.net_g(x = self.lq, event = self.input_event_flow)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -490,7 +872,7 @@ class ImageEventRestorationModel(BaseModel):
     def test(self):
         self.net_g.eval()
         with torch.no_grad():
-            self.input_event_bi_flow = torch.cat((torch.cat((self.voxel, self.flow10), dim=1), self.flow12), dim=1)
+            self.input_event_flow = torch.cat((self.voxel, self.flow02), dim=1)
             n = self.lq.size(0)  # n: batch size
             outs = []
             m = self.opt['val'].get('max_minibatch', n)  # m is the minibatch, equals to batch size or mini batch size
@@ -501,13 +883,13 @@ class ImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['val'].get('use_mask'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_bi_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 elif self.opt['datasets']['val'].get('return_ren'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_bi_flow[i:j, :, :, :], ren = self.ren[i:j,:])
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], ren = self.ren[i:j,:])
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_bi_flow[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :])  # mini batch all in 
             
                 if isinstance(pred, list):
                     pred = pred[-1]
@@ -565,8 +947,9 @@ class ImageEventRestorationModel(BaseModel):
             if self.opt['val'].get('grids') is not None:
                 self.grids()
                 self.grids_voxel()
-                self.grids_flow10()
-                self.grids_flow12()
+#                 self.grids_flow10()
+#                 self.grids_flow12()
+                self.grids_flow02()
 
             self.test()
 
