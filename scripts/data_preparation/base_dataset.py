@@ -6,6 +6,11 @@ import random
 import os
 
 # local modules
+import sys
+
+# sys.path.remove('/home/ohjinjin/EFNet')
+# sys.path.remove('/home/ohjinjin/EFNet/')
+sys.path.insert(0, '/home/ohjinjin/EFNet_bi_gt_of/EFNet/')
 from basicsr.data.h5_augment import *
 
 class BaseVoxelDataset(Dataset):

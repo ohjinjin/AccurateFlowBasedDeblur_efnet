@@ -2,19 +2,43 @@
 import numpy as np
 import cv2
 import os
-from .raw_event_dataset import *
-from .noise_function import add_noise_to_voxel, put_hot_pixels_in_voxel_
+import sys
+
+# sys.path.remove('/home/ohjinjin/EFNet')
+# sys.path.remove('/home/ohjinjin/EFNet/')
+sys.path.insert(0, '/home/ohjinjin/EFNet_bi_gt_of/EFNet/scripts/data_preparation')
+from raw_event_dataset import *
+from noise_function import add_noise_to_voxel, put_hot_pixels_in_voxel_
 import argparse
 import h5py
 import torch
 import time
-
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input_path", default="/scratch/leisun/Datasets/GOPRO_fullsize_h5/test", help="Path to hdf5 file")
 parser.add_argument("--save_path", default="/scratch/e_work/GOPRO_SCER/test")
 parser.add_argument("--voxel_method", default="SCER_esim", help="SCER_esim, SCER_real_data")
-parser.add_argument("--add_noise", default=True, help="add noisy to voxel like hot pixel")
+parser.add_argument("--add_noise", type=str2bool, nargs='?', const=True, default=True, help="add noisy to voxel like hot pixel")
+parser.add_argument("--return_events", type=str2bool, nargs='?', const=True, default=False, help="return events data")
+parser.add_argument("--return_voxelgrid", type=str2bool, nargs='?', const=True, default=True, help="return voxel grid data")
+
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument("--input_path", default="/scratch/leisun/Datasets/GOPRO_fullsize_h5/test", help="Path to hdf5 file")
+# parser.add_argument("--save_path", default="/scratch/e_work/GOPRO_SCER/test")
+# parser.add_argument("--voxel_method", default="SCER_esim", help="SCER_esim, SCER_real_data")
+# parser.add_argument("--add_noise", default=True, help="add noisy to voxel like hot pixel")
+# parser.add_argument("--return_events", default=False, help="add noisy to voxel like hot pixel")
+# parser.add_argument("--return_voxelgrid", default=True, help="add noisy to voxel like hot pixel")
 
 exposure_time = 1/240
 num_bins = 6
@@ -45,7 +69,7 @@ def main():
     # no data augmentation
     data_augment = {}
     dataset_kwargs = {'transforms': data_augment, 'voxel_method': voxel_method, 'num_bins': num_bins,
-                      'has_exposure_time': has_exposure_time, 'combined_voxel_channels': True, 'voxel_temporal_bilinear': True} # voxel_temporal_bilinear for voxel grid
+                      'has_exposure_time': has_exposure_time, 'combined_voxel_channels': True, 'voxel_temporal_bilinear': True, 'return_events':args.return_events, 'return_voxelgrid':args.return_voxelgrid} # voxel_temporal_bilinear for voxel grid
 
     file_folder_path = args.input_path
     output_file_folder_path = args.save_path
@@ -62,39 +86,56 @@ def main():
         dloader = GoproEsimH5Dataset(**dataset_kwargs)
         num_img = 0
         for item in dloader:
-            voxel=item['voxel']
-            num_events = item['num_events']
+            if args.return_voxelgrid:
+                voxel=item['voxel']
+                num_events = item['num_events']
+            if args.return_events:
+                events=item['events']
+            
             blur = item['frame']  # C,H,W
             sharp = item['frame_gt']
 
             # add noise to voxel Here
-            if args.add_noise:
+            if args.add_noise and args.return_voxelgrid:
                 # print("Add noisy to voxels")
                 voxel = add_noise_to_voxel(voxel, noise_std=1.0, noise_fraction=0.05)
                 put_hot_pixels_in_voxel_(voxel, hot_pixel_range=20, hot_pixel_fraction=0.00002)
 
-            voxel_np = voxel.numpy() # shape: bin+1,H,W
+            if args.return_voxelgrid:
+                voxel_np = voxel.numpy() # shape: bin+1,H,W
+            if args.return_events:
+                events_np = events.numpy()
             blur_np=np.uint8(np.clip(255*blur.numpy(), 0, 255))
             sharp_np=np.uint8(np.clip(255*sharp.numpy(), 0, 255))
-            mask_img = voxel2mask(voxel_np)
-            #close filter
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-            mask_img_close = cv2.morphologyEx(mask_img, cv2.MORPH_CLOSE, kernel, iterations=1)
-            # print(mask_img_close.shape)
-            mask_img_close = mask_img_close[np.newaxis,...] # H,W -> C,H,W  C=1
+            if args.return_voxelgrid:
+                mask_img = voxel2mask(voxel_np)
+                #close filter
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                mask_img_close = cv2.morphologyEx(mask_img, cv2.MORPH_CLOSE, kernel, iterations=1)
+                # print(mask_img_close.shape)
+                mask_img_close = mask_img_close[np.newaxis,...] # H,W -> C,H,W  C=1
 
             # save to h5 image
-            voxel_dset=h5_file.create_dataset("voxels/voxel{:09d}".format(num_img), data=voxel_np, dtype=np.dtype(np.float32))
+            if args.return_voxelgrid:
+                voxel_dset=h5_file.create_dataset("voxels/voxel{:09d}".format(num_img), data=voxel_np, dtype=np.dtype(np.float32))
+            if args.return_events:
+                events_dset=h5_file.create_dataset("events/event{:09d}".format(num_img), data=events_np, dtype=np.dtype(np.float32))
             image_dset=h5_file.create_dataset("images/image{:09d}".format(num_img), data=blur_np, dtype=np.dtype(np.uint8))
             sharp_image_dset=h5_file.create_dataset("sharp_images/image{:09d}".format(num_img), data=sharp_np, dtype=np.dtype(np.uint8))
-            mask_dset=h5_file.create_dataset("masks/mask{:09d}".format(num_img), data=mask_img_close, dtype=np.dtype(np.uint8))
+            if args.return_voxelgrid:
+                mask_dset=h5_file.create_dataset("masks/mask{:09d}".format(num_img), data=mask_img_close, dtype=np.dtype(np.uint8))
 
 
 
-            voxel_dset.attrs['size']=voxel_np.shape
+            
+            if args.return_voxelgrid:
+                voxel_dset.attrs['size']=voxel_np.shape
+                mask_dset.attrs['size']=mask_img_close.shape
+            if args.return_events:
+                events_dset.attrs['size']=events_np.shape
             image_dset.attrs['size']=blur_np.shape
             sharp_image_dset.attrs['size']=sharp_np.shape
-            mask_dset.attrs['size']=mask_img_close.shape
+            
 
 
             num_img+=1

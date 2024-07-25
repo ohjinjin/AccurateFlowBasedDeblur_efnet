@@ -1,5 +1,5 @@
 import h5py
-from .base_dataset import BaseVoxelDataset
+from base_dataset import BaseVoxelDataset
 import pandas as pd
 import numpy as np
 
