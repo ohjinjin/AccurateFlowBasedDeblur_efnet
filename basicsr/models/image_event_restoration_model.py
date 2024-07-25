@@ -113,6 +113,49 @@ class ImageEventRestorationModel(BaseModel):
         batch = transforms(batch)
         return batch
     
+    def convert_to_3d(self, flow):
+#         """ Convert 2D optical flow to 3D tensor """
+#         u = flow[..., 0]
+#         v = flow[..., 1]
+#         mag = np.sqrt(u**2 + v**2)
+        
+#         # Normalize u and v
+#         u_normalized = u / mag
+#         v_normalized = v / mag
+        
+#         # Avoid division by zero
+#         u_normalized[np.isnan(u_normalized)] = 0
+#         v_normalized[np.isnan(v_normalized)] = 0
+        
+#         # Normalize magnitude to [0, 1]
+#         M = np.max(mag)
+#         z = mag / M if M != 0 else mag
+        
+#         # Stack to create a 3D tensor
+#         C = np.stack((u_normalized, v_normalized, z), axis=-1)
+        
+#         return C
+        # np로 구현한거랑 0.0005정도 차이남
+        """ Convert 2D optical flow to 3D tensor using PyTorch """
+        u = flow[..., 0]
+        v = flow[..., 1]
+
+        # Calculate magnitude
+        mag = torch.sqrt(u**2 + v**2)
+
+        # Normalize u and v
+        u_normalized = torch.where(mag != 0, u / mag, torch.zeros_like(u))
+        v_normalized = torch.where(mag != 0, v / mag, torch.zeros_like(v))
+
+        # Normalize magnitude to [0, 1]
+        M = torch.max(mag)
+        z = mag / M if M != 0 else mag
+
+        # Stack to create a 3D tensor
+        C = torch.stack((u_normalized, v_normalized, z), dim=-1)
+
+        return C
+    
     def feed_data(self, data):
 #         image_1 = Image.open(image_path_1)
 #         image_2 = Image.open(image_path_2)
@@ -126,6 +169,10 @@ class ImageEventRestorationModel(BaseModel):
 #         self.flow10 = self.raft_model(img1, img0)[-1]
 #         self.flow12 = self.raft_model(img1, img2)[-1]
         self.flow02 = self.raft_model(img0, img2)[-1]
+#         print("CEHCK JINJIN::::", self.flow02.shape)
+        self.flow02 = self.convert_to_3d(self.flow02.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)  # flow normalization
+#         print("CEHCK JINJIN::::", self.flow02.shape)
+        
 #         print("CEHCK JINJIN::::", self.flow10.shape, self.flow12.shape)
         
         self.lq = data['frame'].to(self.device)
