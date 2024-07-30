@@ -1,3 +1,8 @@
+import sys
+# sys.path.remove('/home/ohjinjin/EFNet/')
+# sys.path.remove('/home/ohjinjin/EFNet')
+sys.path.insert(0, '/home/ohjinjin/EFNet_add_of/EFNet/')
+# print("CHCHCH::::::::::\n", sys.path)
 import logging
 import torch
 from os import path as osp
