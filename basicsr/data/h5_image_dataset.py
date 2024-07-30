@@ -61,7 +61,7 @@ class H5ImageDataset(data.Dataset):
         """
         if self.h5_file is None:
             self.h5_file = h5py.File(self.data_path, 'r')
-        return self.h5_file['images']['image{:09d}'.format(index)][:]
+        return self.h5_file['synthesized_images']['image{:09d}'.format(index)][:]
 
     def get_gt_frame(self, index):
         """
@@ -160,7 +160,7 @@ class H5ImageDataset(data.Dataset):
             self.vox_transform = self.transform
 
         with h5py.File(self.data_path, 'r') as file:
-            self.dataset_len = len(file['images'].keys())
+            self.dataset_len = len(file['synthesized_images'].keys())
 
 
     def __getitem__(self, index, seed=None):
