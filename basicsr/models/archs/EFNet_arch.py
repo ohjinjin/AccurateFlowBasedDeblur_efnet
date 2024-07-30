@@ -47,6 +47,7 @@ class SAM(nn.Module):
 class EFNet(nn.Module):
     def __init__(self, in_chn=3, ev_chn=6, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
         super(EFNet, self).__init__()
+        
         self.depth = depth
         self.fuse_before_downsample = fuse_before_downsample
         self.num_heads = num_heads
