@@ -96,7 +96,7 @@ class ImageEventRestorationModel(BaseModel):
     def feed_data(self, data):
 
         self.lq = data['frame'].to(self.device)
-        self.voxel=data['voxel'].to(self.device) 
+#         self.voxel=data['voxel'].to(self.device) 
         if 'mask' in data:
             self.mask = data['mask'].to(self.device)
         if 'frame_gt' in data:
@@ -257,20 +257,20 @@ class ImageEventRestorationModel(BaseModel):
 
         self.output = preds / count_mt
         self.lq = self.origin_lq
-        self.voxel = self.origin_voxel
+#         self.voxel = self.origin_voxel
 
 
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
 
         if self.opt['datasets']['train'].get('use_mask'):
-            preds = self.net_g(x = self.lq, event = self.voxel, mask = self.mask)
+            preds = self.net_g(x = self.lq)#, event = self.voxel, mask = self.mask)
 
         elif self.opt['datasets']['train'].get('return_ren'):
-            preds = self.net_g(x = self.lq, event = self.voxel, ren = self.ren)
+            preds = self.net_g(x = self.lq)#, event = self.voxel, ren = self.ren)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.voxel)
+            preds = self.net_g(x = self.lq)#, event = self.voxel)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -337,13 +337,13 @@ class ImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['val'].get('use_mask'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :])#, event = self.voxel[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 elif self.opt['datasets']['val'].get('return_ren'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], ren = self.ren[i:j,:])
+                    pred = self.net_g(x = self.lq[i:j, :, :, :])#, event = self.voxel[i:j, :, :, :], ren = self.ren[i:j,:])
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :])#, event = self.voxel[i:j, :, :, :])  # mini batch all in 
             
                 if isinstance(pred, list):
                     pred = pred[-1]
@@ -357,7 +357,7 @@ class ImageEventRestorationModel(BaseModel):
         self.feed_data(data={'frame': img.unsqueeze(dim=0), 'voxel': voxel.unsqueeze(dim=0)})
         if self.opt['val'].get('grids') is not None:
             self.grids()
-            self.grids_voxel()
+#             self.grids_voxel()
 
         self.test()
 
@@ -398,7 +398,7 @@ class ImageEventRestorationModel(BaseModel):
             self.feed_data(val_data)
             if self.opt['val'].get('grids') is not None:
                 self.grids()
-                self.grids_voxel()
+#                 self.grids_voxel()
 
             self.test()
 

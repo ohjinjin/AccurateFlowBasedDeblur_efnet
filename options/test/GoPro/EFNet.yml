@@ -37,7 +37,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: ./experiments/pretrained_models/EFNet-GoPro.pth
+  pretrain_network_g: ./experiments/EFNet_experiment/models/net_g_latest.pth
   strict_load_g: true
   resume_state: ~
   root: ./experiments/  # set this option ONLY in TEST!!!

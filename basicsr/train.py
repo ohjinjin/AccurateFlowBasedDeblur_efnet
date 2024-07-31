@@ -6,6 +6,8 @@ import random
 import time
 import torch
 from os import path as osp
+import sys
+sys.path.insert(0, '/home/ohjinjin/EFNet/')
 
 from basicsr.data import create_dataloader, create_dataset
 from basicsr.data.data_sampler import EnlargedSampler
@@ -72,7 +74,7 @@ def init_loggers(opt):
                               is not None) and ('debug' not in opt['name']):
         assert opt['logger'].get('use_tb_logger') is True, (
             'should turn on tensorboard when using wandb')
-        init_wandb_logger(opt)
+#         init_wandb_logger(opt)
     tb_logger = None
     if opt['logger'].get('use_tb_logger') and 'debug' not in opt['name']:
         tb_logger = init_tb_logger(log_dir=osp.join('tb_logger', opt['name']))

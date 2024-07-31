@@ -1,5 +1,5 @@
 # general settings
-name: debug #EFNet_experiment 
+name: EFNet_experiment_wo_event
 model_type: ImageEventRestorationModel
 scale: 1
 num_gpu:  1 #4
@@ -14,11 +14,11 @@ datasets:
     dataroot: ./datasets/GoPro/train
 
     # keep true if use events
-    norm_voxel: true
-    return_voxel: true
+    norm_voxel: false #true
+    return_voxel: false #true
 
-    return_mask: true
-    use_mask: true
+    return_mask: false #true
+    use_mask: false # true
 
     filename_tmpl: '{}'
     io_backend:
@@ -43,10 +43,10 @@ datasets:
     # dataroot: ./datasets/test
     dataroot: ./datasets/GoPro/test
 
-    norm_voxel: true  
-    return_voxel: true
-    return_mask: true 
-    use_mask: true
+    norm_voxel: false #true  
+    return_voxel: false #true
+    return_mask: false #true 
+    use_mask: false #true
 
     io_backend:
       type: h5
@@ -80,10 +80,10 @@ train:
 
   scheduler:
     type: TrueCosineAnnealingLR
-    T_max: 200000 
+    T_max: 300000 
     eta_min: !!float 1e-7
 
-  total_iter: 200000
+  total_iter: 300000
   warmup_iter: -1 # no warm up
 
   # losses
@@ -94,7 +94,7 @@ train:
 
 # validation settings
 val:
-  val_freq: !!float 5e4 # 2e4
+  val_freq: !!float 5e4
   save_img: false  
   grids: ~  
   crop_size: ~ 

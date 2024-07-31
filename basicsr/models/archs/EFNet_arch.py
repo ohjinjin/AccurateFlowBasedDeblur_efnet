@@ -11,7 +11,7 @@ EFNet
 import torch
 import torch.nn as nn
 import math
-from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransformerBlock
+# from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransformerBlock
 from torch.nn import functional as F
 
 def conv3x3(in_chn, out_chn, bias=True):
@@ -45,18 +45,19 @@ class SAM(nn.Module):
         return x1, img
 
 class EFNet(nn.Module):
-    def __init__(self, in_chn=3, ev_chn=6, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
+#     def __init__(self, in_chn=3, ev_chn=6, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
+    def __init__(self, in_chn=3, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
         super(EFNet, self).__init__()
         self.depth = depth
-        self.fuse_before_downsample = fuse_before_downsample
+        self.fuse_before_downsample = False #fuse_before_downsample
         self.num_heads = num_heads
         self.down_path_1 = nn.ModuleList()
         self.down_path_2 = nn.ModuleList()
         self.conv_01 = nn.Conv2d(in_chn, wf, 3, 1, 1)
         self.conv_02 = nn.Conv2d(in_chn, wf, 3, 1, 1)
         # event
-        self.down_path_ev = nn.ModuleList()
-        self.conv_ev1 = nn.Conv2d(ev_chn, wf, 3, 1, 1)
+#         self.down_path_ev = nn.ModuleList()
+#         self.conv_ev1 = nn.Conv2d(ev_chn, wf, 3, 1, 1)
 
         prev_channels = self.get_input_chn(wf)
         for i in range(depth):
@@ -64,9 +65,9 @@ class EFNet(nn.Module):
 
             self.down_path_1.append(UNetConvBlock(prev_channels, (2**i) * wf, downsample, relu_slope, num_heads=self.num_heads[i]))
             self.down_path_2.append(UNetConvBlock(prev_channels, (2**i) * wf, downsample, relu_slope, use_emgc=downsample))
-            # ev encoder
-            if i < self.depth:
-                self.down_path_ev.append(UNetEVConvBlock(prev_channels, (2**i) * wf, downsample , relu_slope))
+#             # ev encoder
+#             if i < self.depth:
+#                 self.down_path_ev.append(UNetEVConvBlock(prev_channels, (2**i) * wf, downsample , relu_slope))
 
             prev_channels = (2**i) * wf
 
@@ -85,22 +86,23 @@ class EFNet(nn.Module):
         self.cat12 = nn.Conv2d(prev_channels*2, prev_channels, 1, 1, 0)
         self.last = conv3x3(prev_channels, in_chn, bias=True)
 
-    def forward(self, x, event, mask=None):
+#     def forward(self, x, event, mask=None):
+    def forward(self, x, mask=None):
         image = x
 
-        ev = []
-        #EVencoder
-        e1 = self.conv_ev1(event)
-        for i, down in enumerate(self.down_path_ev):
-            if i < self.depth-1:
-                e1, e1_up = down(e1, self.fuse_before_downsample)
-                if self.fuse_before_downsample:
-                    ev.append(e1_up)
-                else:
-                    ev.append(e1)
-            else:
-                e1 = down(e1, self.fuse_before_downsample)
-                ev.append(e1)
+#         ev = []
+#         #EVencoder
+#         e1 = self.conv_ev1(event)
+#         for i, down in enumerate(self.down_path_ev):
+#             if i < self.depth-1:
+#                 e1, e1_up = down(e1, self.fuse_before_downsample)
+#                 if self.fuse_before_downsample:
+#                     ev.append(e1_up)
+#                 else:
+#                     ev.append(e1)
+#             else:
+#                 e1 = down(e1, self.fuse_before_downsample)
+#                 ev.append(e1)
 
         #stage 1
         x1 = self.conv_01(image)
@@ -110,14 +112,16 @@ class EFNet(nn.Module):
         for i, down in enumerate(self.down_path_1):
             if (i+1) < self.depth:
 
-                x1, x1_up = down(x1, event_filter=ev[i], merge_before_downsample=self.fuse_before_downsample)
+#                 x1, x1_up = down(x1, event_filter=ev[i], merge_before_downsample=self.fuse_before_downsample)
+                x1, x1_up = down(x1, merge_before_downsample=self.fuse_before_downsample)
                 encs.append(x1_up)
 
                 if mask is not None:
                     masks.append(F.interpolate(mask, scale_factor = 0.5**i))
             
             else:
-                x1 = down(x1, event_filter=ev[i], merge_before_downsample=self.fuse_before_downsample)
+#                 x1 = down(x1, event_filter=ev[i], merge_before_downsample=self.fuse_before_downsample)
+                x1 = down(x1, merge_before_downsample=self.fuse_before_downsample)
 
 
         for i, up in enumerate(self.up_path_1):
@@ -164,7 +168,7 @@ class UNetConvBlock(nn.Module):
         super(UNetConvBlock, self).__init__()
         self.downsample = downsample
         self.identity = nn.Conv2d(in_size, out_size, 1, 1, 0)
-        self.use_emgc = use_emgc
+        self.use_emgc = False#use_emgc
         self.num_heads = num_heads
 
         self.conv_1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1, bias=True)
@@ -172,17 +176,17 @@ class UNetConvBlock(nn.Module):
         self.conv_2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1, bias=True)
         self.relu_2 = nn.LeakyReLU(relu_slope, inplace=False)        
 
-        if downsample and use_emgc:
-            self.emgc_enc = nn.Conv2d(out_size, out_size, 3, 1, 1)
-            self.emgc_dec = nn.Conv2d(out_size, out_size, 3, 1, 1)
-            self.emgc_enc_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
-            self.emgc_dec_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#         if downsample and use_emgc:
+#             self.emgc_enc = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#             self.emgc_dec = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#             self.emgc_enc_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#             self.emgc_dec_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
 
         if downsample:
             self.downsample = conv_down(out_size, out_size, bias=False)
 
-        if self.num_heads is not None:
-            self.image_event_transformer = EventImage_ChannelAttentionTransformerBlock(out_size, num_heads=self.num_heads, ffn_expansion_factor=4, bias=False, LayerNorm_type='WithBias')
+#         if self.num_heads is not None:
+#             self.image_event_transformer = EventImage_ChannelAttentionTransformerBlock(out_size, num_heads=self.num_heads, ffn_expansion_factor=4, bias=False, LayerNorm_type='WithBias')
         
 
     def forward(self, x, enc=None, dec=None, mask=None, event_filter=None, merge_before_downsample=True):
@@ -193,28 +197,30 @@ class UNetConvBlock(nn.Module):
 
         out = out_conv2 + self.identity(x)
 
-        if enc is not None and dec is not None and mask is not None:
-            assert self.use_emgc
-            out_enc = self.emgc_enc(enc) + self.emgc_enc_mask((1-mask)*enc)
-            out_dec = self.emgc_dec(dec) + self.emgc_dec_mask(mask*dec)
-            out = out + out_enc + out_dec        
+#         if enc is not None and dec is not None and mask is not None:
+#             assert self.use_emgc
+#             out_enc = self.emgc_enc(enc) + self.emgc_enc_mask((1-mask)*enc)
+#             out_dec = self.emgc_dec(dec) + self.emgc_dec_mask(mask*dec)
+#             out = out + out_enc + out_dec        
             
-        if event_filter is not None and merge_before_downsample:
-            # b, c, h, w = out.shape
-            out = self.image_event_transformer(out, event_filter) 
+#         if event_filter is not None and merge_before_downsample:
+#             # b, c, h, w = out.shape
+#             out = self.image_event_transformer(out, event_filter) 
              
         if self.downsample:
             out_down = self.downsample(out)
-            if not merge_before_downsample: 
-                out_down = self.image_event_transformer(out_down, event_filter) 
+#             if not merge_before_downsample: 
+#                 out_down = self.image_event_transformer(out_down, event_filter) 
 
             return out_down, out
-
         else:
-            if merge_before_downsample:
-                return out
-            else:
-                out = self.image_event_transformer(out, event_filter)
+            return out
+
+#         else:
+#             if merge_before_downsample:
+#                 return out
+#             else:
+#                 out = self.image_event_transformer(out, event_filter)
 
 
 class UNetEVConvBlock(nn.Module):
@@ -222,7 +228,7 @@ class UNetEVConvBlock(nn.Module):
         super(UNetEVConvBlock, self).__init__()
         self.downsample = downsample
         self.identity = nn.Conv2d(in_size, out_size, 1, 1, 0)
-        self.use_emgc = use_emgc
+        self.use_emgc = False #use_emgc
 
         self.conv_1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1, bias=True)
         self.relu_1 = nn.LeakyReLU(relu_slope, inplace=False)
@@ -230,11 +236,11 @@ class UNetEVConvBlock(nn.Module):
         self.relu_2 = nn.LeakyReLU(relu_slope, inplace=False)
 
         self.conv_before_merge = nn.Conv2d(out_size, out_size , 1, 1, 0) 
-        if downsample and use_emgc:
-            self.emgc_enc = nn.Conv2d(out_size, out_size, 3, 1, 1)
-            self.emgc_dec = nn.Conv2d(out_size, out_size, 3, 1, 1)
-            self.emgc_enc_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
-            self.emgc_dec_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#         if downsample and use_emgc:
+#             self.emgc_enc = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#             self.emgc_dec = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#             self.emgc_enc_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
+#             self.emgc_dec_mask = nn.Conv2d(out_size, out_size, 3, 1, 1)
 
         if downsample:
             self.downsample = conv_down(out_size, out_size, bias=False)

@@ -8,7 +8,8 @@ from basicsr.train import parse_options
 from basicsr.utils import (get_env_info, get_root_logger, get_time_str,
                            make_exp_dirs)
 from basicsr.utils.options import dict2str
-
+import sys
+sys.path.insert(0, '/home/ohjinjin/EFNet/')
 
 def main():
     # parse options, set distributed setting, set ramdom seed
