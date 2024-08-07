@@ -191,7 +191,7 @@ class H5ImageDataset(data.Dataset):
             frame_next = self.get_next_frame(index)
             frame_next = self.transform_frame(frame_next, seed, transpose_to_CHW=False)
 
-        voxel = self.get_voxel(index)
+#         voxel = self.get_voxel(index)
         frame = self.transform_frame(frame, seed, transpose_to_CHW=False)  # to tensor
 
         # normalize RGB
@@ -208,8 +208,8 @@ class H5ImageDataset(data.Dataset):
             item['frame_prev'] = frame_prev
         if self.return_next_frame:
             item['frame_next'] = frame_next
-        if self.return_voxel:
-            item['voxel'] = self.transform_voxel(voxel, seed, transpose_to_CHW=False)
+#         if self.return_voxel:
+#             item['voxel'] = self.transform_voxel(voxel, seed, transpose_to_CHW=False)
         if self.return_mask:
             mask = self.get_mask(index)
             item['mask'] = self.transform_frame(mask, seed, transpose_to_CHW=False)

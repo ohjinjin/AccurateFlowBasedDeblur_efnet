@@ -219,7 +219,7 @@ class ImageEventRestorationModel(BaseModel):
         
 #         self.flow_01 = data['frame_prev'],data['frame_gt']
 #         self.flow_10 = data['frame_gt'],data['frame_next']
-        self.voxel=data['voxel'].to(self.device)  # torch.Size([B, 6, 256, 256])
+#         self.voxel=data['voxel'].to(self.device)  # torch.Size([B, 6, 256, 256])
 #         print("CHECK SIZE::::", self.voxel.size(0))
 # #         print("CHECK::::::", torch.unique(self.voxel[:,0,:,:]))
 # #         print("CHECK::::::", torch.unique(self.voxel[:,1,:,:]))
@@ -844,7 +844,7 @@ class ImageEventRestorationModel(BaseModel):
 
         self.output = preds / count_mt
         self.lq = self.origin_lq
-        self.voxel = self.origin_voxel
+#         self.voxel = self.origin_voxel
 #         self.flow10 = self.origin_flow10
 #         self.flow12 = self.origin_flow12
         self.flow02 = self.origin_flow02
@@ -853,16 +853,16 @@ class ImageEventRestorationModel(BaseModel):
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
         
-        self.input_event_flow = torch.cat((self.voxel, self.flow02), dim=1)
+#         self.input_event_flow = torch.cat((self.voxel, self.flow02), dim=1)
 
         if self.opt['datasets']['train'].get('use_mask'):
-            preds = self.net_g(x = self.lq, event = self.input_event_flow, mask = self.mask)
+            preds = self.net_g(x = self.lq, event = self.flow02, mask = self.mask)
 
         elif self.opt['datasets']['train'].get('return_ren'):
-            preds = self.net_g(x = self.lq, event = self.input_event_flow, ren = self.ren)
+            preds = self.net_g(x = self.lq, event = self.flow02, ren = self.ren)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.input_event_flow)
+            preds = self.net_g(x = self.lq, event = self.flow02)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -919,7 +919,7 @@ class ImageEventRestorationModel(BaseModel):
     def test(self):
         self.net_g.eval()
         with torch.no_grad():
-            self.input_event_flow = torch.cat((self.voxel, self.flow02), dim=1)
+#             self.input_event_flow = torch.cat((self.voxel, self.flow02), dim=1)
             n = self.lq.size(0)  # n: batch size
             outs = []
             m = self.opt['val'].get('max_minibatch', n)  # m is the minibatch, equals to batch size or mini batch size
@@ -930,13 +930,13 @@ class ImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['val'].get('use_mask'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.flow02[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 elif self.opt['datasets']['val'].get('return_ren'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], ren = self.ren[i:j,:])
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.flow02[i:j, :, :, :], ren = self.ren[i:j,:])
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.flow02[i:j, :, :, :])  # mini batch all in 
             
                 if isinstance(pred, list):
                     pred = pred[-1]
@@ -993,7 +993,7 @@ class ImageEventRestorationModel(BaseModel):
             self.feed_data(val_data)
             if self.opt['val'].get('grids') is not None:
                 self.grids()
-                self.grids_voxel()
+#                 self.grids_voxel()
 #                 self.grids_flow10()
 #                 self.grids_flow12()
                 self.grids_flow02()
