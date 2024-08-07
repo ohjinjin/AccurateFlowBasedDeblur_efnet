@@ -141,7 +141,7 @@ class ImageEventRestorationModel(BaseModel):
         self.lq = data['frame'].to(self.device)
         self.flow = data['flow'].to(self.device)#.unsqueeze(0)
         self.flow = self.convert_to_3d(self.flow.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) # flow normalization
-        self.voxel=data['voxel'].to(self.device) 
+#         self.voxel=data['voxel'].to(self.device) 
         if 'mask' in data:
             self.mask = data['mask'].to(self.device)
         if 'frame_gt' in data:
@@ -303,7 +303,7 @@ class ImageEventRestorationModel(BaseModel):
         self.output = preds / count_mt
         self.lq = self.origin_lq
         self.flow = self.origin_flow
-        self.voxel = self.origin_voxel
+#         self.voxel = self.origin_voxel
         
     def grids_flow(self):
         b, c, h, w = self.flow.size()  # flow is after data augment (for example, crop, if have)
@@ -372,16 +372,16 @@ class ImageEventRestorationModel(BaseModel):
         self.optimizer_g.zero_grad()
 
 #         print("CHECK JINJIN:", self.voxel.shape, self.flow.shape)
-        self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
+#         self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
 #         print("CHECK INPUT SHAPE:", input_event_flow.shape)
         if self.opt['datasets']['train'].get('use_mask'):
-            preds = self.net_g(x = self.lq, event = self.input_event_flow, mask = self.mask)
+            preds = self.net_g(x = self.lq, event = self.flow, mask = self.mask)
 
         elif self.opt['datasets']['train'].get('return_ren'):
-            preds = self.net_g(x = self.lq, event = self.input_event_flow, ren = self.ren)
+            preds = self.net_g(x = self.lq, event = self.flow, ren = self.ren)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.input_event_flow)
+            preds = self.net_g(x = self.lq, event = self.flow)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -438,7 +438,7 @@ class ImageEventRestorationModel(BaseModel):
     def test(self):
         self.net_g.eval()
         with torch.no_grad():
-            self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
+#             self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
             n = self.lq.size(0)  # n: batch size
             outs = []
             m = self.opt['val'].get('max_minibatch', n)  # m is the minibatch, equals to batch size or mini batch size
@@ -449,13 +449,13 @@ class ImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['val'].get('use_mask'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 elif self.opt['datasets']['val'].get('return_ren'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], ren = self.ren[i:j,:])
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.flow[i:j, :, :, :], ren = self.ren[i:j,:])
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.flow[i:j, :, :, :])  # mini batch all in 
             
                 if isinstance(pred, list):
                     pred = pred[-1]
@@ -512,7 +512,7 @@ class ImageEventRestorationModel(BaseModel):
             if self.opt['val'].get('grids') is not None:
                 self.grids()
                 self.grids_flow()
-                self.grids_voxel()
+#                 self.grids_voxel()
 
             self.test()
 

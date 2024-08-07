@@ -175,7 +175,7 @@ class H5ImageDataset(data.Dataset):
             frame_gt = self.get_gt_frame(index)
             frame_gt = self.transform_frame(frame_gt, seed, transpose_to_CHW=False)
 
-        voxel = self.get_voxel(index)
+#         voxel = self.get_voxel(index)
         frame = self.transform_frame(frame, seed, transpose_to_CHW=False)  # to tensor
         flow = self.transform_flow_frame(flow, seed, transpose_to_CHW=False)
         
@@ -190,8 +190,8 @@ class H5ImageDataset(data.Dataset):
             item['frame'] = frame
         if self.return_gt_frame:
             item['frame_gt'] = frame_gt
-        if self.return_voxel:
-            item['voxel'] = self.transform_voxel(voxel, seed, transpose_to_CHW=False)
+#         if self.return_voxel:
+#             item['voxel'] = self.transform_voxel(voxel, seed, transpose_to_CHW=False)
         if self.return_mask:
             mask = self.get_mask(index)
             item['mask'] = self.transform_frame(mask, seed, transpose_to_CHW=False)

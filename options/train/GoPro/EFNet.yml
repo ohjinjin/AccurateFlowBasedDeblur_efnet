@@ -17,9 +17,9 @@ datasets:
     norm_voxel: true
     return_voxel: true
 
-    return_mask: true
+    return_mask: false
     return_flow: true
-    use_mask: true
+    use_mask: false
 
     filename_tmpl: '{}'
     io_backend:
@@ -46,9 +46,9 @@ datasets:
 
     norm_voxel: true  
     return_voxel: true
-    return_mask: true
+    return_mask: false
     return_flow: true
-    use_mask: true
+    use_mask: false
 
     io_backend:
       type: h5
