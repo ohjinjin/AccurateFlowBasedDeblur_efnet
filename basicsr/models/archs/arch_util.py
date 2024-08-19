@@ -346,6 +346,59 @@ class EventImage_ChannelAttentionTransformerBlock(nn.Module):
 
         return fused
 
+class FlowEvent_ChannelAttentionTransformerBlock(nn.Module):
+    def __init__(self, dim, num_heads, ffn_expansion_factor=2, bias=False, LayerNorm_type='WithBias'):
+        super(FlowEvent_ChannelAttentionTransformerBlock, self).__init__()
+
+        self.norm1_flow = LayerNorm(dim, LayerNorm_type)
+        self.norm1_event = LayerNorm(dim, LayerNorm_type)
+        self.attn = Mutual_Attention(dim, num_heads, bias)
+        # mlp
+        self.norm2 = nn.LayerNorm(dim)
+        mlp_hidden_dim = int(dim * ffn_expansion_factor)
+        self.ffn = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=nn.GELU, drop=0.)
+
+    def forward(self, image, event, flow):
+        # flow: b, c, h, w
+        # event: b, c, h, w
+        # return: b, c, h, w
+        assert image.shape == flow.shape == event.shape, 'the shape of flow doesnt equal to event'
+        b, c , h, w = image.shape
+        fused = image + self.attn(self.norm1_flow(flow), self.norm1_event(event)) # b, c, h, w
+
+        # mlp
+        fused = to_3d(fused) # b, h*w, c
+        fused = fused + self.ffn(self.norm2(fused))
+        fused = to_4d(fused, h, w)
+
+        return fused
+
+class FlowImage_ChannelAttentionTransformerBlock(nn.Module):
+    def __init__(self, dim, num_heads, ffn_expansion_factor=2, bias=False, LayerNorm_type='WithBias'):
+        super(FlowImage_ChannelAttentionTransformerBlock, self).__init__()
+
+        self.norm1_image = LayerNorm(dim, LayerNorm_type)
+        self.norm1_flow = LayerNorm(dim, LayerNorm_type)
+        self.attn = Mutual_Attention(dim, num_heads, bias)
+        # mlp
+        self.norm2 = nn.LayerNorm(dim)
+        mlp_hidden_dim = int(dim * ffn_expansion_factor)
+        self.ffn = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=nn.GELU, drop=0.)
+
+    def forward(self, image, flow):
+        # image: b, c, h, w
+        # flow: b, c, h, w
+        # return: b, c, h, w
+        assert image.shape == flow.shape, 'the shape of image doesnt equal to flow'
+        b, c , h, w = image.shape
+        fused = image + self.attn(self.norm1_image(image), self.norm1_flow(flow)) # b, c, h, w
+
+        # mlp
+        fused = to_3d(fused) # b, h*w, c
+        fused = fused + self.ffn(self.norm2(fused))
+        fused = to_4d(fused, h, w)
+
+        return fused
 
 
 class Mlp(nn.Module):

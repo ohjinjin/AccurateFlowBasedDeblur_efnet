@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import math
 from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransformerBlock
+from basicsr.models.archs.arch_util import FlowImage_ChannelAttentionTransformerBlock
+from basicsr.models.archs.arch_util import FlowEvent_ChannelAttentionTransformerBlock
 from torch.nn import functional as F
 
 def conv3x3(in_chn, out_chn, bias=True):
@@ -45,7 +47,7 @@ class SAM(nn.Module):
         return x1, img
 
 class EFNet(nn.Module):
-    def __init__(self, in_chn=3, ev_chn=6, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
+    def __init__(self, in_chn=3, ev_chn=6, fl_chn=3, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
         super(EFNet, self).__init__()
         
         self.depth = depth
@@ -57,7 +59,10 @@ class EFNet(nn.Module):
         self.conv_02 = nn.Conv2d(in_chn, wf, 3, 1, 1)
         # event
         self.down_path_ev = nn.ModuleList()
-        self.conv_ev1 = nn.Conv2d(ev_chn+3, wf, 3, 1, 1)  # event voxel + (0->2) pseudo gt noramlized flows using homogeneous coordinates
+        self.conv_ev1 = nn.Conv2d(ev_chn, wf, 3, 1, 1)
+        # flow
+        self.down_path_fl = nn.ModuleList()
+        self.conv_fl1 = nn.Conv2d(fl_chn, wf, 3, 1, 1)
 
         prev_channels = self.get_input_chn(wf)
         for i in range(depth):
@@ -65,9 +70,10 @@ class EFNet(nn.Module):
 
             self.down_path_1.append(UNetConvBlock(prev_channels, (2**i) * wf, downsample, relu_slope, num_heads=self.num_heads[i]))
             self.down_path_2.append(UNetConvBlock(prev_channels, (2**i) * wf, downsample, relu_slope, use_emgc=downsample))
-            # ev encoder
+            # ev encoder, fl encoder
             if i < self.depth:
                 self.down_path_ev.append(UNetEVConvBlock(prev_channels, (2**i) * wf, downsample , relu_slope))
+                self.down_path_fl.append(UNetEVConvBlock(prev_channels, (2**i) * wf, downsample , relu_slope))
 
             prev_channels = (2**i) * wf
 
@@ -86,7 +92,7 @@ class EFNet(nn.Module):
         self.cat12 = nn.Conv2d(prev_channels*2, prev_channels, 1, 1, 0)
         self.last = conv3x3(prev_channels, in_chn, bias=True)
 
-    def forward(self, x, event, mask=None):
+    def forward(self, x, event, flow, mask=None):
         image = x
 
         ev = []
@@ -102,6 +108,20 @@ class EFNet(nn.Module):
             else:
                 e1 = down(e1, self.fuse_before_downsample)
                 ev.append(e1)
+        
+        fl = []
+        #EVencoder
+        f1 = self.conv_fl1(flow)
+        for i, down in enumerate(self.down_path_fl):
+            if i < self.depth-1:
+                f1, f1_up = down(f1, self.fuse_before_downsample)
+                if self.fuse_before_downsample:
+                    fl.append(f1_up)
+                else:
+                    fl.append(f1)
+            else:
+                f1 = down(f1, self.fuse_before_downsample)
+                fl.append(f1)
 
         #stage 1
         x1 = self.conv_01(image)
@@ -111,14 +131,14 @@ class EFNet(nn.Module):
         for i, down in enumerate(self.down_path_1):
             if (i+1) < self.depth:
 
-                x1, x1_up = down(x1, event_filter=ev[i], merge_before_downsample=self.fuse_before_downsample)
+                x1, x1_up = down(x1, event_filter=ev[i], flow_filter=fl[i], merge_before_downsample=self.fuse_before_downsample)
                 encs.append(x1_up)
 
                 if mask is not None:
                     masks.append(F.interpolate(mask, scale_factor = 0.5**i))
             
             else:
-                x1 = down(x1, event_filter=ev[i], merge_before_downsample=self.fuse_before_downsample)
+                x1 = down(x1, event_filter=ev[i], flow_filter=fl[i], merge_before_downsample=self.fuse_before_downsample)
 
 
         for i, up in enumerate(self.up_path_1):
@@ -184,9 +204,11 @@ class UNetConvBlock(nn.Module):
 
         if self.num_heads is not None:
             self.image_event_transformer = EventImage_ChannelAttentionTransformerBlock(out_size, num_heads=self.num_heads, ffn_expansion_factor=4, bias=False, LayerNorm_type='WithBias')
+            self.flow_event_transformer = FlowEvent_ChannelAttentionTransformerBlock(out_size, num_heads=self.num_heads, ffn_expansion_factor=4, bias=False, LayerNorm_type='WithBias')
+            self.image_flow_transformer = FlowImage_ChannelAttentionTransformerBlock(out_size, num_heads=self.num_heads, ffn_expansion_factor=4, bias=False, LayerNorm_type='WithBias')
         
 
-    def forward(self, x, enc=None, dec=None, mask=None, event_filter=None, merge_before_downsample=True):
+    def forward(self, x, enc=None, dec=None, mask=None, event_filter=None, flow_filter=None, merge_before_downsample=True):
         out = self.conv_1(x)
 
         out_conv1 = self.relu_1(out)
@@ -202,12 +224,17 @@ class UNetConvBlock(nn.Module):
             
         if event_filter is not None and merge_before_downsample:
             # b, c, h, w = out.shape
-            out = self.image_event_transformer(out, event_filter) 
+            out = self.image_event_transformer(out, event_filter)
+        if flow_filter is not None and merge_before_downsample:
+            out = self.image_flow_transformer(out, flow_filter)
+            out = self.flow_event_transformer(out, event_filter, flow_filter)
              
         if self.downsample:
             out_down = self.downsample(out)
             if not merge_before_downsample: 
-                out_down = self.image_event_transformer(out_down, event_filter) 
+                out_down = self.image_event_transformer(out_down, event_filter)
+                out_down = self.image_flow_transformer(out_down, flow_filter)
+                out_down = self.flow_event_transformer(out_down, event_filter, flow_filter)
 
             return out_down, out
 
@@ -216,6 +243,8 @@ class UNetConvBlock(nn.Module):
                 return out
             else:
                 out = self.image_event_transformer(out, event_filter)
+                out = self.image_flow_transformer(out, flow_filter)
+                out = self.flow_event_transformer(out, event_filter, flow_filter)
 
 
 class UNetEVConvBlock(nn.Module):

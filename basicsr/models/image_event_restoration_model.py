@@ -372,16 +372,16 @@ class ImageEventRestorationModel(BaseModel):
         self.optimizer_g.zero_grad()
 
 #         print("CHECK JINJIN:", self.voxel.shape, self.flow.shape)
-        self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
+#         self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
 #         print("CHECK INPUT SHAPE:", input_event_flow.shape)
         if self.opt['datasets']['train'].get('use_mask'):
-            preds = self.net_g(x = self.lq, event = self.input_event_flow, mask = self.mask)
+            preds = self.net_g(x = self.lq, event = self.voxel, flow = self.flow, mask = self.mask)
 
         elif self.opt['datasets']['train'].get('return_ren'):
-            preds = self.net_g(x = self.lq, event = self.input_event_flow, ren = self.ren)
+            preds = self.net_g(x = self.lq, event = self.voxel, flow = self.flow, ren = self.ren)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.input_event_flow)
+            preds = self.net_g(x = self.lq, event = self.voxel, flow = self.flow)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -438,7 +438,7 @@ class ImageEventRestorationModel(BaseModel):
     def test(self):
         self.net_g.eval()
         with torch.no_grad():
-            self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
+#             self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
             n = self.lq.size(0)  # n: batch size
             outs = []
             m = self.opt['val'].get('max_minibatch', n)  # m is the minibatch, equals to batch size or mini batch size
@@ -449,13 +449,13 @@ class ImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['val'].get('use_mask'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], flow = self.flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 elif self.opt['datasets']['val'].get('return_ren'):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], ren = self.ren[i:j,:])
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], flow = self.flow[i:j, :, :, :], ren = self.ren[i:j,:])
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], flow = self.flow[i:j, :, :, :])  # mini batch all in 
             
                 if isinstance(pred, list):
                     pred = pred[-1]
