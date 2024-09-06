@@ -10,7 +10,7 @@ import os
 import sys
 
 # sys.path.remove('/home/ohjinjin/EFNet')
-sys.path.insert(0, '/home/ohjinjin/EFNet_add_of/EFNet/')
+sys.path.insert(0, '/home/ohjinjin/EFNet_prompt/EFNet/')
 
 from basicsr.data import create_dataloader, create_dataset
 from basicsr.data.data_sampler import EnlargedSampler

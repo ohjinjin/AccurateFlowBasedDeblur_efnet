@@ -367,51 +367,129 @@ class Mlp(nn.Module):
         return x
 
 
+# class Attention(nn.Module):
+#     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., sr_ratio=1):
+#         super().__init__()
+#         assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
+
+#         self.dim = dim
+#         self.num_heads = num_heads
+#         head_dim = dim // num_heads
+#         self.scale = qk_scale or head_dim ** -0.5
+
+#         self.q = nn.Linear(dim, dim, bias=qkv_bias)
+#         self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+#         self.attn_drop = nn.Dropout(attn_drop)
+#         self.proj = nn.Linear(dim, dim)
+#         self.proj_drop = nn.Dropout(proj_drop)
+
+#         self.sr_ratio = sr_ratio
+#         if sr_ratio > 1:
+#             self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+#             self.norm = nn.LayerNorm(dim)
+
+#     def forward(self, x, y, H=None, W=None):
+#         # x: image
+#         # y: event
+#         assert x.dim()==3, x.shape
+#         assert x.shape == y.shape
+#         B, N, C = x.shape
+#         q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+
+#         if self.sr_ratio > 1:
+#             y_ = y.permute(0, 2, 1).reshape(B, C, H, W)
+#             y_ = self.sr(y_).reshape(B, C, -1).permute(0, 2, 1)
+#             y_ = self.norm(y_)
+#             kv = self.kv(y_).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+#         else:
+#             kv = self.kv(y).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+#         k, v = kv[0], kv[1]
+
+#         attn = (q @ k.transpose(-2, -1)) * self.scale
+#         attn = attn.softmax(dim=-1)
+#         attn = self.attn_drop(attn)
+
+#         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+#         x = self.proj(x)
+#         x = self.proj_drop(x)
+
+#         return x
+
+##########################################################################
+## Multi-DConv Head Transposed Self-Attention (MDTA) 
+## https://github.com/va1shn9v/PromptIR/blob/main/net/model.py
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., sr_ratio=1):
-        super().__init__()
-        assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
-
-        self.dim = dim
+    def __init__(self, dim, num_heads, bias):
+        super(Attention, self).__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
 
-        self.q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
+        self.qkv = nn.Conv2d(dim, dim*3, kernel_size=1, bias=bias)
+        self.qkv_dwconv = nn.Conv2d(dim*3, dim*3, kernel_size=3, stride=1, padding=1, groups=dim*3, bias=bias)
+        self.project_out = nn.Conv2d(dim, dim, kernel_size=1, bias=bias)
+        
 
-        self.sr_ratio = sr_ratio
-        if sr_ratio > 1:
-            self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
-            self.norm = nn.LayerNorm(dim)
 
-    def forward(self, x, y, H=None, W=None):
-        # x: image
-        # y: event
-        assert x.dim()==3, x.shape
-        assert x.shape == y.shape
-        B, N, C = x.shape
-        q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+    def forward(self, x):
+        b,c,h,w = x.shape
 
-        if self.sr_ratio > 1:
-            y_ = y.permute(0, 2, 1).reshape(B, C, H, W)
-            y_ = self.sr(y_).reshape(B, C, -1).permute(0, 2, 1)
-            y_ = self.norm(y_)
-            kv = self.kv(y_).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        else:
-            kv = self.kv(y).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        k, v = kv[0], kv[1]
+        qkv = self.qkv_dwconv(self.qkv(x))
+        q,k,v = qkv.chunk(3, dim=1)   
+        
+        q = rearrange(q, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
+        k = rearrange(k, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
+        v = rearrange(v, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
+        q = torch.nn.functional.normalize(q, dim=-1)
+        k = torch.nn.functional.normalize(k, dim=-1)
+
+        attn = (q @ k.transpose(-2, -1)) * self.temperature
         attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
+        out = (attn @ v)
+        
+        out = rearrange(out, 'b head c (h w) -> b (head c) h w', head=self.num_heads, h=h, w=w)
 
+        out = self.project_out(out)
+        return out
+
+##########################################################################
+## Gated-Dconv Feed-Forward Network (GDFN)
+## https://github.com/va1shn9v/PromptIR/blob/main/net/model.py
+class FeedForward(nn.Module):
+    def __init__(self, dim, ffn_expansion_factor, bias):
+        super(FeedForward, self).__init__()
+
+        hidden_features = int(dim*ffn_expansion_factor)
+
+        self.project_in = nn.Conv2d(dim, hidden_features*2, kernel_size=1, bias=bias)
+
+        self.dwconv = nn.Conv2d(hidden_features*2, hidden_features*2, kernel_size=3, stride=1, padding=1, groups=hidden_features*2, bias=bias)
+
+        self.project_out = nn.Conv2d(hidden_features, dim, kernel_size=1, bias=bias)
+
+    def forward(self, x):
+        x = self.project_in(x)
+        x1, x2 = self.dwconv(x).chunk(2, dim=1)
+        x = F.gelu(x1) * x2
+        x = self.project_out(x)
         return x
 
+
+##########################################################################
+## Transformer Block
+## https://github.com/va1shn9v/PromptIR/blob/main/net/model.py
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, num_heads, ffn_expansion_factor, bias, LayerNorm_type):
+        super(TransformerBlock, self).__init__()
+
+        self.norm1 = LayerNorm(dim, LayerNorm_type)
+        self.attn = Attention(dim, num_heads, bias)
+        self.norm2 = LayerNorm(dim, LayerNorm_type)
+        self.ffn = FeedForward(dim, ffn_expansion_factor, bias)
+
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.ffn(self.norm2(x))
+
+        return x
