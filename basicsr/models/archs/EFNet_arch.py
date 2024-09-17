@@ -59,9 +59,13 @@ class PromptGenBlock(nn.Module):
         # N개의 서로 다른 커널 크기를 가지는 Convolution Layer 정의
         self.convs = nn.ModuleList([
             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=False),  # 3x3 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=2, dilation=2, bias=False),
             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=5, padding=2, bias=False),  # 5x5 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=3, dilation=3, bias=False),
             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=7, padding=3, bias=False),  # 7x7 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=4, dilation=4, bias=False),
             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=9, padding=4, bias=False),  # 9x9 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=5, dilation=5, bias=False)
             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=11, padding=5, bias=False)  # 11x11 커널
         ])
         self.linear_layer = nn.Linear(lin_dim,self.N*lin_dim)
@@ -148,7 +152,7 @@ class EFNet(nn.Module):
 #             self.up_path_1.append(nn.Conv2d(int(dim*2**2)+512,int(dim*2**2),kernel_size=1,bias=bias)) ### reduce_noise_level3-1
 #             self.up_path_1.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope)) # up4_3, concat, reduce_chan_level3-1
 #             self.up_path_1.append(nn.Sequential(*[TransformerBlock(dim=int(dim*2**2), num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type) for i in range(num_blocks[2])])) ### decoder_level3-1
-            self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, prompt_size=int(prev_channels/4)))
+            self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
             
             self.up_path_2.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
             self.skip_conv_1.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
@@ -427,14 +431,14 @@ class UNetUpBlock(nn.Module):
 
 
 class CustomUpBlock(nn.Module):  # in_size = 2*out_size
-    def __init__(self, in_size, out_size, relu_slope, prompt_len=5, prompt_size=16, heads=[1, 2, 4, 8], ffn_expansion_factor=2.66, bias=False, num_blocks=[4, 6, 6, 8], LayerNorm_type='WithBias'):
+    def __init__(self, in_size, out_size, relu_slope, prompt_len=5, prompt_size=16, num_heads=None, ffn_expansion_factor=2.66, bias=False, num_blocks=[1, 4, 4], LayerNorm_type='WithBias'):
         super(CustomUpBlock, self).__init__()
         
         # PromptGenBlock: 프롬프트 생성 블록
         self.prompt = PromptGenBlock(prompt_dim=in_size, prompt_len=prompt_len, prompt_size=prompt_size, lin_dim=in_size)
 
         # TransformerBlock: 노이즈 레벨을 처리하는 Transformer 블록
-        self.noise = TransformerBlock(dim=in_size*2, num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type)
+        self.noise = TransformerBlock(dim=in_size*2, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type)
 
         # Conv2D: 노이즈를 줄이기 위한 Conv2D 레이어
         self.reduce_noise = nn.Conv2d(in_size*2, in_size, kernel_size=1, bias=bias)
@@ -444,7 +448,7 @@ class CustomUpBlock(nn.Module):  # in_size = 2*out_size
 
         # Transformer 블록 시퀀스: 디코더 블록을 위한 Transformer 블록들
         self.decoder = nn.Sequential(
-            *[TransformerBlock(dim=out_size, num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type) for _ in range(num_blocks[2])]
+            *[TransformerBlock(dim=out_size, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type) for _ in range(num_blocks[0])]
         )
 
     def forward(self, out_dec_prev_level, out_enc_curr_level, motion_dec_prev_level):
