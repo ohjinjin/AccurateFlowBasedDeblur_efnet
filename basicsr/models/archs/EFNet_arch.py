@@ -11,9 +11,9 @@ EFNet
 import torch
 import torch.nn as nn
 import math
-from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransformerBlock
-from basicsr.models.archs.arch_util import FlowImage_ChannelAttentionTransformerBlock
-from basicsr.models.archs.arch_util import FlowEvent_ChannelAttentionTransformerBlock
+from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransformerBlock, FlowImage_ChannelAttentionTransformerBlock, FlowEvent_ChannelAttentionTransformerBlock, TransformerBlock
+# from basicsr.models.archs.arch_util import FlowImage_ChannelAttentionTransformerBlock
+# from basicsr.models.archs.arch_util import FlowEvent_ChannelAttentionTransformerBlock
 from torch.nn import functional as F
 
 def conv3x3(in_chn, out_chn, bias=True):
@@ -46,6 +46,42 @@ class SAM(nn.Module):
         x1 = x1+x
         return x1, img
 
+##########################################################################
+##---------- Prompt Gen Module -----------------------
+## https://github.com/va1shn9v/PromptIR/blob/main/net/model.py
+class PromptGenBlock(nn.Module):
+    def __init__(self,prompt_dim=128,prompt_len=5,prompt_size = 96,lin_dim = 192):
+        super(PromptGenBlock,self).__init__()
+        self.N = prompt_len
+#         self.prompt_param = nn.Parameter(torch.rand(1,prompt_len,prompt_dim,prompt_size,prompt_size))
+        # N개의 서로 다른 커널 크기를 가지는 Convolution Layer 정의
+        self.convs = nn.ModuleList([
+            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=False),  # 3x3 커널
+            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=5, padding=2, bias=False),  # 5x5 커널
+            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=7, padding=3, bias=False),  # 7x7 커널
+            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=9, padding=4, bias=False),  # 9x9 커널
+            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=11, padding=5, bias=False)  # 11x11 커널
+        ])
+        self.linear_layer = nn.Linear(lin_dim,self.N*lin_dim)
+        self.conv3x3 = nn.Conv2d(prompt_dim,prompt_dim,kernel_size=3,stride=1,padding=1,bias=False)
+
+
+    def forward(self,x, motion):
+        B,C,H,W = x.shape
+        emb = motion.mean(dim=(-2,-1))
+        prompt_weights = F.softmax(self.linear_layer(emb).view(B, C, self.N), dim=-1)
+        conv_outputs = []
+        for conv in self.convs:
+            out = conv(x)
+            conv_outputs.append(out.unsqueeze(1))
+        prompt_param = torch.cat(conv_outputs, dim=1)
+        prompt = prompt_weights.unsqueeze(-1).unsqueeze(-1) * prompt_param.permute(0, 2, 1, 3, 4)
+        prompt = torch.sum(prompt,dim=2)
+        prompt = F.interpolate(prompt,(H,W),mode="bilinear")
+        prompt = self.conv3x3(prompt)
+
+        return prompt
+    
 class EFNet(nn.Module):
     def __init__(self, in_chn=3, ev_chn=6, fl_chn=3, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
         super(EFNet, self).__init__()
@@ -80,11 +116,14 @@ class EFNet(nn.Module):
         self.up_path_1 = nn.ModuleList()
         self.up_path_2 = nn.ModuleList()
         self.skip_conv_1 = nn.ModuleList()
+        self.skip_conv_1_motion = nn.ModuleList()
         self.skip_conv_2 = nn.ModuleList()
         for i in reversed(range(depth - 1)):
-            self.up_path_1.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
+#             self.up_path_1.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
+            self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
             self.up_path_2.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
             self.skip_conv_1.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
+            self.skip_conv_1_motion.append(nn.Conv2d(prev_channels, prev_channels, 3, 1, 1))
             self.skip_conv_2.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
             prev_channels = (2**i)*wf
         self.sam12 = SAM(prev_channels)
@@ -142,7 +181,7 @@ class EFNet(nn.Module):
 
 
         for i, up in enumerate(self.up_path_1):
-            x1 = up(x1, self.skip_conv_1[i](encs[-i-1]))
+            x1 = up(x1, self.skip_conv_1[i](encs[-i-1]), self.skip_conv_1_motion[i](fl[-i-1]))
             decs.append(x1)
         sam_feature, out_1 = self.sam12(x1, image)
 
@@ -307,6 +346,53 @@ class UNetUpBlock(nn.Module):
         out = self.conv_block(out)
         return out
 
+class CustomUpBlock(nn.Module):  # in_size = 2*out_size
+    def __init__(self, in_size, out_size, relu_slope, prompt_len=5, prompt_size=16, num_heads=None, ffn_expansion_factor=2.66, bias=False, num_blocks=[1, 4, 4], LayerNorm_type='WithBias'):
+        super(CustomUpBlock, self).__init__()
 
+        # PromptGenBlock: 프롬프트 생성 블록
+        self.prompt = PromptGenBlock(prompt_dim=in_size, prompt_len=prompt_len, prompt_size=prompt_size, lin_dim=in_size)
+
+        # TransformerBlock: 노이즈 레벨을 처리하는 Transformer 블록
+        self.noise = TransformerBlock(dim=in_size*2, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type)
+
+        # Conv2D: 노이즈를 줄이기 위한 Conv2D 레이어
+        self.reduce_noise = nn.Conv2d(in_size*2, in_size, kernel_size=1, bias=bias)
+
+        # UNetUpBlock: 업샘플링과 skip connection 결합
+        self.up_cat_reducechan = UNetUpBlock(in_size, out_size, relu_slope)
+
+        # Transformer 블록 시퀀스: 디코더 블록을 위한 Transformer 블록들
+        self.decoder = nn.Sequential(
+            *[TransformerBlock(dim=out_size, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type) for _ in range(num_blocks[0])]
+        )
+
+    def forward(self, out_dec_prev_level, out_enc_curr_level, motion_dec_prev_level):
+#         print("CHECK JINJIN out_dec_prev_level::::", out_dec_prev_level.shape, "out_enc_curr_level:::: ", out_enc_curr_level.shape)
+        # CHECK JINJIN out_dec_prev_level:::: torch.Size([1, 256, 64, 64]) out_enc_curr_level::::  torch.Size([1, 128, 128, 128])
+
+        # 1. PromptGenBlock 처리
+        dec_curr_param = self.prompt(out_dec_prev_level, motion_dec_prev_level)  # equation (2)에서 F_l대신 motion feature인 G_l로 입력 바꿔줘야하고 함수정의자체에서도 5개의 앙상블링하게끔 마저 수정필요함.
+#         print("CHEKC JININ 11:", dec_curr_param.shape)  # torch.Size([1, 256, 64, 64])
+        # 2. TransformerBlock으로 노이즈 처리
+        out_dec_prev_level = torch.cat([out_dec_prev_level, dec_curr_param], 1)
+#         print("CHEKC JININ 2:", out_dec_prev_level.shape)  # torch.Size([1, 512, 64, 64])
+        out_dec_prev_level = self.noise(out_dec_prev_level)
+#         print("CHEKC JININ 3:", out_dec_prev_level.shape)# torch.Size([1, 512, 64, 64])
+
+        # 3. Conv2D로 노이즈 줄이기
+        out_dec_prev_level = self.reduce_noise(out_dec_prev_level)
+#         print("CHEKC JININ 4:", out_dec_prev_level.shape)  # torch.Size([1, 256, 64, 64])
+        # 4. 업샘플링 및 skip connection 결합
+        inp_dec_curr_level = self.up_cat_reducechan(out_dec_prev_level, out_enc_curr_level)
+#         print("CHEKC JININ 5:", inp_dec_curr_level.shape)  # torch.Size([1, 128, 128, 128])
+
+        # 5. Transformer 블록들 적용 (디코더 처리)
+        out_dec_curr_level = self.decoder(inp_dec_curr_level)
+#         print("CHEKC JININ 6:", out_dec_curr_level.shape)  # torch.Size([1, 128, 128, 128])
+
+        return out_dec_curr_level
+    
+    
 if __name__ == "__main__":
     pass
