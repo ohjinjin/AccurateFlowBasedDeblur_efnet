@@ -70,7 +70,7 @@ class PromptGenBlock(nn.Module):
         ])
         self.linear_layer = nn.Linear(lin_dim,self.N*lin_dim)
         self.conv3x3 = nn.Conv2d(prompt_dim,prompt_dim,kernel_size=3,stride=1,padding=1,bias=False)
-        
+
 
     def forward(self,x, motion):
 #         B,C,H,W = x.shape
@@ -94,7 +94,7 @@ class PromptGenBlock(nn.Module):
         for conv in self.convs:
             out = conv(x)  # Convolution 적용
             conv_outputs.append(out.unsqueeze(1))  # N축을 추가하여 (B, 1, C, H, W) 형태로
-        
+
         # 각 Convolution 레이어의 출력을 N축으로 concat
         prompt_param = torch.cat(conv_outputs, dim=1)  # (B, N, C, H, W)
 #         print("CHECK JINJIN ::: C:", C, "N:", self.N, "prompt_weights:", prompt_weights.shape)
@@ -108,11 +108,11 @@ class PromptGenBlock(nn.Module):
         prompt = self.conv3x3(prompt)
 
         return prompt
-    
+
 class EFNet(nn.Module):
     def __init__(self, in_chn=3, ev_chn=6, fl_chn=3, wf=64, depth=3, fuse_before_downsample=True, relu_slope=0.2, num_heads=[1,2,4]):
         super(EFNet, self).__init__()
-        
+
         self.depth = depth
         self.fuse_before_downsample = fuse_before_downsample
         self.num_heads = num_heads
@@ -120,7 +120,7 @@ class EFNet(nn.Module):
         self.down_path_2 = nn.ModuleList()
         self.conv_01 = nn.Conv2d(in_chn, wf, 3, 1, 1)
         self.conv_02 = nn.Conv2d(in_chn, wf, 3, 1, 1)
-        
+
         # event
         self.down_path_ev = nn.ModuleList()
         self.conv_ev1 = nn.Conv2d(ev_chn, wf, 3, 1, 1)
@@ -146,6 +146,7 @@ class EFNet(nn.Module):
         self.skip_conv_1 = nn.ModuleList()
         self.skip_conv_1_motion = nn.ModuleList()
         self.skip_conv_2 = nn.ModuleList()
+        self.skip_conv_2_motion = nn.ModuleList()
         for i in reversed(range(depth - 1)):
 #             self.up_path_1.append(PromptGenBlock(prompt_dim=64,prompt_len=5,prompt_size = 64,lin_dim = 96)) ### prompt3-1
 #             self.up_path_1.append(TransformerBlock(dim=int(dim*2**2) + 512, num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type)) ### noise_level3-1
@@ -153,11 +154,12 @@ class EFNet(nn.Module):
 #             self.up_path_1.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope)) # up4_3, concat, reduce_chan_level3-1
 #             self.up_path_1.append(nn.Sequential(*[TransformerBlock(dim=int(dim*2**2), num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type) for i in range(num_blocks[2])])) ### decoder_level3-1
             self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
-            
-            self.up_path_2.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
+
+            self.up_path_2.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
             self.skip_conv_1.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
             self.skip_conv_1_motion.append(nn.Conv2d(prev_channels, prev_channels, 3, 1, 1))
             self.skip_conv_2.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
+            self.skip_conv_2_motion.append(nn.Conv2d(prev_channels, prev_channels, 3, 1, 1))
             prev_channels = (2**i)*wf
         self.sam12 = SAM(prev_channels)
 
@@ -191,7 +193,7 @@ class EFNet(nn.Module):
 #                 print("JINJIN4==== e1.shape", e1.shape)
 # JINJIN4==== e1.shape torch.Size([8, 256, 64, 64]) 4c h/4 w/4
                 ev.append(e1)
-        
+
         fl = []
         #FLencoder
         f1 = self.conv_fl1(flow)
@@ -234,12 +236,12 @@ class EFNet(nn.Module):
 
                 if mask is not None:
                     masks.append(F.interpolate(mask, scale_factor = 0.5**i))
-            
+
             else:
                 x1 = down(x1, event_filter=ev[i], merge_before_downsample=self.fuse_before_downsample)
 #                 print("JINJIN4==== x1.shape", x1.shape)
 # JINJIN4==== x1.shape torch.Size([8, 256, 64, 64]) 4c h/4 w/4
-            
+
         for i, up in enumerate(self.up_path_1):
             x1 = up(x1, self.skip_conv_1[i](encs[-i-1]), self.skip_conv_1_motion[i](fl[-i-1]))
 #             print("JINJIN7==== x1.shape", x1.shape)
@@ -287,7 +289,7 @@ class EFNet(nn.Module):
 # JINJIN3==== x2.shape torch.Size([8, 256, 64, 64]) 4c h/4 w/4
 
         for i, up in enumerate(self.up_path_2):
-            x2 = up(x2, self.skip_conv_2[i](blocks[-i-1]))
+            x2 = up(x2, self.skip_conv_2[i](blocks[-i-1]), self.skip_conv_2_motion[i](fl[-i-1]))
 #             print("JINJIN7==== x2.shape", x2.shape)
 # JINJIN7==== x2.shape torch.Size([8, 128, 128, 128]) 2c h/2 w/2
 # JINJIN7==== x2.shape torch.Size([8, 64, 256, 256]) c h w
@@ -335,7 +337,7 @@ class UNetConvBlock(nn.Module):
 
         if self.num_heads is not None:
             self.image_event_transformer = EventImage_ChannelAttentionTransformerBlock(out_size, num_heads=self.num_heads, ffn_expansion_factor=4, bias=False, LayerNorm_type='WithBias')
-        
+
 
     def forward(self, x, enc=None, dec=None, mask=None, event_filter=None, merge_before_downsample=True):
         out = self.conv_1(x)
@@ -350,11 +352,11 @@ class UNetConvBlock(nn.Module):
             out_enc = self.emgc_enc(enc) + self.emgc_enc_mask((1-mask)*enc)
             out_dec = self.emgc_dec(dec) + self.emgc_dec_mask(mask*dec)
             out = out + out_enc + out_dec        
-            
+
         if event_filter is not None and merge_before_downsample:
             # b, c, h, w = out.shape
             out = self.image_event_transformer(out, event_filter)
-             
+
         if self.downsample:
             out_down = self.downsample(out)
             if not merge_before_downsample: 
@@ -398,13 +400,13 @@ class UNetEVConvBlock(nn.Module):
         out_conv2 = self.relu_2(self.conv_2(out_conv1))
 
         out = out_conv2 + self.identity(x)
-             
+
         if self.downsample:
 
             out_down = self.downsample(out)
-            
+
             if not merge_before_downsample: 
-            
+
                 out_down = self.conv_before_merge(out_down)
             else : 
                 out = self.conv_before_merge(out)
@@ -433,7 +435,7 @@ class UNetUpBlock(nn.Module):
 class CustomUpBlock(nn.Module):  # in_size = 2*out_size
     def __init__(self, in_size, out_size, relu_slope, prompt_len=5, prompt_size=16, num_heads=None, ffn_expansion_factor=2.66, bias=False, num_blocks=[1, 4, 4], LayerNorm_type='WithBias'):
         super(CustomUpBlock, self).__init__()
-        
+
         # PromptGenBlock: 프롬프트 생성 블록
         self.prompt = PromptGenBlock(prompt_dim=in_size, prompt_len=prompt_len, prompt_size=prompt_size, lin_dim=in_size)
 
