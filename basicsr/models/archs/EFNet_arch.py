@@ -118,13 +118,15 @@ class EFNet(nn.Module):
         self.skip_conv_1 = nn.ModuleList()
         self.skip_conv_1_motion = nn.ModuleList()
         self.skip_conv_2 = nn.ModuleList()
+        self.skip_conv_2_motion = nn.ModuleList()
         for i in reversed(range(depth - 1)):
 #             self.up_path_1.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
             self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
-            self.up_path_2.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
+            self.up_path_2.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
             self.skip_conv_1.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
             self.skip_conv_1_motion.append(nn.Conv2d(prev_channels, prev_channels, 3, 1, 1))
             self.skip_conv_2.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
+            self.skip_conv_2_motion.append(nn.Conv2d(prev_channels, prev_channels, 3, 1, 1))
             prev_channels = (2**i)*wf
         self.sam12 = SAM(prev_channels)
 
@@ -200,7 +202,7 @@ class EFNet(nn.Module):
                 x2 = down(x2)
 
         for i, up in enumerate(self.up_path_2):
-            x2 = up(x2, self.skip_conv_2[i](blocks[-i-1]))
+            x2 = up(x2, self.skip_conv_2[i](blocks[-i-1]), self.skip_conv_2_motion[i](fl[-i-1]))
 
         out_2 = self.last(x2)
         out_2 = out_2 + image

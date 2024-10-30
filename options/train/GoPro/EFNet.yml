@@ -1,8 +1,8 @@
 # general settings
-name: EFNet_experiment 
+name: 2stages_batch24_8
 model_type: ImageEventRestorationModel
 scale: 1
-num_gpu:  4
+num_gpu:  2
 manual_seed: 10
 
 datasets:
@@ -32,7 +32,7 @@ datasets:
     # data loader settings
     use_shuffle: true
     num_worker_per_gpu: 4
-    batch_size_per_gpu: 8 # 4 for 2080, 8 for titan
+    batch_size_per_gpu: 4 # 4 for 2080, 8 for titan
     dataset_enlarge_ratio: 4  # accelarate, equals to the num_gpu
     prefetch_mode: cpu
     num_prefetch_queue: 2
@@ -100,7 +100,7 @@ val:
   save_img: false  
   grids: ~  
   crop_size: ~ 
-  max_minibatch: 8
+  max_minibatch: 4
 
   metrics:
     psnr:
