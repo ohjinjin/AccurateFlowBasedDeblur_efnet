@@ -1,5 +1,5 @@
 # general settings
-name: EFNet_test
+name: HWweight_2stages_batch24_8_test
 model_type: TestImageEventRestorationModel
 scale: 1
 num_gpu: 1 # set num_gpu: 0 for cpu mode
@@ -38,7 +38,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: ./experiments/EFNet_experiment/models/net_g_200000.pth
+  pretrain_network_g: ./experiments/HWweight_2stages_batch24_8/models/net_g_300000.pth
   strict_load_g: true
   resume_state: ~
   root: ./experiments/  # set this option ONLY in TEST!!!

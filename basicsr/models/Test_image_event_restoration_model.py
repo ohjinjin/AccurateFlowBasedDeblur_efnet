@@ -95,10 +95,55 @@ class TestImageEventRestorationModel(BaseModel):
         # print(self.optimizer_g)
         # exit(0)
 
+    def convert_to_3d(self, flow):
+#         """ Convert 2D optical flow to 3D tensor """
+#         u = flow[..., 0]
+#         v = flow[..., 1]
+#         mag = np.sqrt(u**2 + v**2)
+
+#         # Normalize u and v
+#         u_normalized = u / mag
+#         v_normalized = v / mag
+
+#         # Avoid division by zero
+#         u_normalized[np.isnan(u_normalized)] = 0
+#         v_normalized[np.isnan(v_normalized)] = 0
+
+#         # Normalize magnitude to [0, 1]
+#         M = np.max(mag)
+#         z = mag / M if M != 0 else mag
+
+#         # Stack to create a 3D tensor
+#         C = np.stack((u_normalized, v_normalized, z), axis=-1)
+
+#         return C
+        # np로 구현한거랑 0.0005정도 차이남
+        """ Convert 2D optical flow to 3D tensor using PyTorch """
+        u = flow[..., 0]
+        v = flow[..., 1]
+
+        # Calculate magnitude
+        mag = torch.sqrt(u**2 + v**2)
+
+        # Normalize u and v
+        u_normalized = torch.where(mag != 0, u / mag, torch.zeros_like(u))
+        v_normalized = torch.where(mag != 0, v / mag, torch.zeros_like(v))
+
+        # Normalize magnitude to [0, 1]
+        M = torch.max(mag)
+        z = mag / M if M != 0 else mag
+
+        # Stack to create a 3D tensor
+        C = torch.stack((u_normalized, v_normalized, z), dim=-1)
+
+        return C
+        
+        
     def feed_data(self, data):
 
         self.lq = data['frame'].to(self.device)
         self.flow = data['flow'].to(self.device)
+        self.flow = self.convert_to_3d(self.flow.permute(0, 2, 3, 1)).permute(0, 3, 1, 2) # flow normalization
         self.voxel=data['voxel'].to(self.device)
         self.seq_name = data ['seq'] # add seq name
         if self.opt['dataset_name'] == 'REBlur':
@@ -348,15 +393,15 @@ class TestImageEventRestorationModel(BaseModel):
         self.optimizer_g.zero_grad()
         # preds = self.net_g(self.lq)
         
-        self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
+#         self.input_event_flow = torch.cat((self.voxel, self.flow), dim=1)
         if self.opt['datasets']['train'].get('use_mask'):
             # print('NETWORK TRAIN USE MASK')
             # print('MASK.SHAPE:{}'.format(self.mask.shape))
             # print('MASK:{}'.format(self.mask))
-            preds = self.net_g(x = self.lq, event = self.input_event_flow, mask = self.mask)
+            preds = self.net_g(x = self.lq, event = self.voxel, flow = self.flow, mask = self.mask)
 
         else:
-            preds = self.net_g(x = self.lq, event = self.input_event_flow)
+            preds = self.net_g(x = self.lq, event = self.voxel, flow = self.flow)
 
         if not isinstance(preds, list):
             preds = [preds]
@@ -421,10 +466,10 @@ class TestImageEventRestorationModel(BaseModel):
                     j = n
 
                 if self.opt['datasets']['test'].get('use_mask', False):
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], flow = self.flow[i:j, :, :, :], mask = self.mask[i:j, :, :, :])  # mini batch all in 
 
                 else:
-                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.input_event_flow[i:j, :, :, :])  # mini batch all in 
+                    pred = self.net_g(x = self.lq[i:j, :, :, :], event = self.voxel[i:j, :, :, :], flow = self.flow[i:j, :, :, :])  # mini batch all in 
 
                 if isinstance(pred, list):
                     pred = pred[-1]

@@ -15,8 +15,6 @@ from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransforme
 # from basicsr.models.archs.arch_util import FlowImage_ChannelAttentionTransformerBlock
 # from basicsr.models.archs.arch_util import FlowEvent_ChannelAttentionTransformerBlock
 from torch.nn import functional as F
-# import os
-# from PIL import Image
 
 def conv3x3(in_chn, out_chn, bias=True):
     layer = nn.Conv2d(in_chn, out_chn, kernel_size=3, stride=1, padding=1, bias=bias)
@@ -77,7 +75,7 @@ class PromptGenBlock(nn.Module):
         self.conv_4 = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
         self.relu_4 = nn.LeakyReLU(relu_slope, inplace=False)
         self.conv_before_merge_2 = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
-        self.conv1x1 = nn.Conv2d(in_channels=prompt_dim, out_channels=5, kernel_size=1, stride=1, padding=0, bias=False)
+        self.conv1x1 = nn.Conv2d(in_channels=prompt_dim, out_channels=self.N*prompt_dim, kernel_size=1, stride=1, padding=0, bias=False)
 #         self.linear_layer = nn.Linear(lin_dim,self.N*lin_dim)
         self.conv3x3 = nn.Conv2d(prompt_dim,prompt_dim,kernel_size=3,stride=1,padding=1,bias=False)
 
@@ -102,24 +100,7 @@ class PromptGenBlock(nn.Module):
         merged_out = merged_out_conv3 + self.identity_2(merged_in)
         merged_out = self.conv_before_merge_2(merged_out)
         
-        prompt_weights = F.softmax(self.conv1x1(merged_out), dim=1)  # B, 5, H, W 사이즈
-        
-
-        # B는 배치 사이즈
-#         B, N, H, W = prompt_weights.shape
-
-#         # 각 배치에 대해 이미지로 저장
-#         for each_batch in range(B):
-#             # 폴더 생성
-#             os.makedirs(f"/home/ohjinjin/result_weight_nhw/{each_batch}/", exist_ok=True)
-#             # 텐서를 PIL 이미지로 변환
-#             imgs = prompt_weights[each_batch].cpu().numpy()  # (N, H, W)
-#             for _ in range(N):
-#                 img = imgs[_]
-# #                 print("CHECKJJINJIN:::::::", img.shape)
-#                 img = (img * 255).astype('uint8')  # 그레이스케일 값 범위를 0-255로 조정
-#                 img = Image.fromarray(img)
-#                 img.save(f"/home/ohjinjin/result_weight_nhw/{each_batch}/prompt_weight_{_}.png")
+        prompt_weights = F.softmax(self.conv1x1(merged_out).view(B, 5, C, H, W), dim=1)
         
         conv_outputs = []
         for conv in self.convs:
@@ -127,7 +108,7 @@ class PromptGenBlock(nn.Module):
             conv_outputs.append(out.unsqueeze(1))
         prompt_param = torch.cat(conv_outputs, dim=1)
 #         prompt = prompt_weights.unsqueeze(-1).unsqueeze(-1) * prompt_param.permute(0, 2, 1, 3, 4)
-        prompt = prompt_param * prompt_weights.unsqueeze(2)
+        prompt = prompt_param * prompt_weights
 #         prompt = torch.sum(prompt,dim=2)
         prompt = torch.sum(prompt,dim=1)
         prompt = F.interpolate(prompt,(H,W),mode="bilinear")

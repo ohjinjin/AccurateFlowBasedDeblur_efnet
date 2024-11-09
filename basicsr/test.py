@@ -1,7 +1,7 @@
 import sys
 # sys.path.remove('/home/ohjinjin/EFNet/')
 # sys.path.remove('/home/ohjinjin/EFNet')
-sys.path.insert(0, '/home/ohjinjin/EFNet_add_of/EFNet/')
+sys.path.insert(0, '/home/ohjinjin/EFNet_multiple_ca_prompt/EFNet/')
 # print("CHCHCH::::::::::\n", sys.path)
 import logging
 import torch

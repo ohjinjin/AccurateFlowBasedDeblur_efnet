@@ -1,5 +1,5 @@
 # general settings
-name: 2stages_batch24_8
+name: max147_feature_prompt_HWCweight_2stages_batch24_8
 model_type: ImageEventRestorationModel
 scale: 1
 num_gpu:  2

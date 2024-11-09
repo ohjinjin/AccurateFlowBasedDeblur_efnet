@@ -15,8 +15,7 @@ from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransforme
 # from basicsr.models.archs.arch_util import FlowImage_ChannelAttentionTransformerBlock
 # from basicsr.models.archs.arch_util import FlowEvent_ChannelAttentionTransformerBlock
 from torch.nn import functional as F
-# import os
-# from PIL import Image
+import torch.fft
 
 def conv3x3(in_chn, out_chn, bias=True):
     layer = nn.Conv2d(in_chn, out_chn, kernel_size=3, stride=1, padding=1, bias=bias)
@@ -52,85 +51,181 @@ class SAM(nn.Module):
 ##---------- Prompt Gen Module -----------------------
 ## https://github.com/va1shn9v/PromptIR/blob/main/net/model.py
 class PromptGenBlock(nn.Module):
-    def __init__(self,prompt_dim=128,prompt_len=5,prompt_size = 96,lin_dim = 192, relu_slope=0.2):
+    def __init__(self,prompt_dim=128,prompt_len=3,prompt_size = 96,lin_dim = 192, relu_slope=0.2):
         super(PromptGenBlock,self).__init__()
         self.N = prompt_len
-#         self.prompt_param = nn.Parameter(torch.rand(1,prompt_len,prompt_dim,prompt_size,prompt_size))
-        # N개의 서로 다른 커널 크기를 가지는 Convolution Layer 정의
-        self.convs = nn.ModuleList([
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=False),  # 3x3 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=5, padding=2, bias=False),  # 5x5 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=7, padding=3, bias=False),  # 7x7 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=9, padding=4, bias=False),  # 9x9 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=11, padding=5, bias=False)  # 11x11 커널
-        ])
-        self.identity_1 = nn.Conv2d(prompt_dim*2, prompt_dim, 1, 1, 0)
-        self.conv_1 = nn.Conv2d(prompt_dim*2, prompt_dim, kernel_size=3, padding=1, bias=True)
-        self.relu_1 = nn.LeakyReLU(relu_slope, inplace=False)
-        self.conv_2 = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
-        self.relu_2 = nn.LeakyReLU(relu_slope, inplace=False)
-        self.conv_before_merge_1 = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
+        self.prompt_dim = prompt_dim
+        self.prompt_size = prompt_size
         
-        self.identity_2 = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
-        self.conv_3 = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
-        self.relu_3 = nn.LeakyReLU(relu_slope, inplace=False)
-        self.conv_4 = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
-        self.relu_4 = nn.LeakyReLU(relu_slope, inplace=False)
-        self.conv_before_merge_2 = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
-        self.conv1x1 = nn.Conv2d(in_channels=prompt_dim, out_channels=5, kernel_size=1, stride=1, padding=0, bias=False)
+        
+        self.prompt_param = nn.Parameter(torch.rand(1,prompt_len,prompt_dim,prompt_size,prompt_size))
+        # N개의 서로 다른 커널 크기를 가지는 Convolution Layer 정의
+#         self.convs = nn.ModuleList([
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=False),  # 3x3 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=5, padding=2, bias=False),  # 5x5 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=7, padding=3, bias=False),  # 7x7 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=9, padding=4, bias=False),  # 9x9 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=11, padding=5, bias=False)  # 11x11 커널
+#         ])
+        self.identity_1_low = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
+        self.conv_1_low = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+        self.relu_1_low = nn.LeakyReLU(relu_slope, inplace=False)
+        self.conv_2_low = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+        self.relu_2_low = nn.LeakyReLU(relu_slope, inplace=False)
+        self.conv_before_merge_1_low = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
+        
+#         self.identity_2_low = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
+#         self.conv_3_low = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+#         self.relu_3_low = nn.LeakyReLU(relu_slope, inplace=False)
+#         self.conv_4_low = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+#         self.relu_4_low = nn.LeakyReLU(relu_slope, inplace=False)
+#         self.conv_before_merge_2_low = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
+        self.conv1x1_low = nn.Conv2d(in_channels=prompt_dim, out_channels=prompt_dim, kernel_size=1, stride=1, padding=0, bias=False)
+        
+        
+        self.identity_1_middle = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
+        self.conv_1_middle = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+        self.relu_1_middle = nn.LeakyReLU(relu_slope, inplace=False)
+        self.conv_2_middle = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+        self.relu_2_middle = nn.LeakyReLU(relu_slope, inplace=False)
+        self.conv_before_merge_1_middle = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
+        
+#         self.identity_2_middle = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
+#         self.conv_3_middle = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+#         self.relu_3_middle = nn.LeakyReLU(relu_slope, inplace=False)
+#         self.conv_4_middle = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+#         self.relu_4_middle = nn.LeakyReLU(relu_slope, inplace=False)
+#         self.conv_before_merge_2_middle = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
+        self.conv1x1_middle = nn.Conv2d(in_channels=prompt_dim, out_channels=prompt_dim, kernel_size=1, stride=1, padding=0, bias=False)
+        
+        self.identity_1_high = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
+        self.conv_1_high = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+        self.relu_1_high = nn.LeakyReLU(relu_slope, inplace=False)
+        self.conv_2_high = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+        self.relu_2_high = nn.LeakyReLU(relu_slope, inplace=False)
+        self.conv_before_merge_1_high = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
+        
+#         self.identity_2_high = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
+#         self.conv_3_high = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+#         self.relu_3_high = nn.LeakyReLU(relu_slope, inplace=False)
+#         self.conv_4_high = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
+#         self.relu_4_high = nn.LeakyReLU(relu_slope, inplace=False)
+#         self.conv_before_merge_2_high = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
+        
+        self.conv1x1_high = nn.Conv2d(in_channels=prompt_dim, out_channels=prompt_dim, kernel_size=1, stride=1, padding=0, bias=False)
 #         self.linear_layer = nn.Linear(lin_dim,self.N*lin_dim)
         self.conv3x3 = nn.Conv2d(prompt_dim,prompt_dim,kernel_size=3,stride=1,padding=1,bias=False)
 
 
-    def forward(self,x, motion):
-        B,C,H,W = x.shape
+    def forward(self, motion):
+        B,C,H,W = motion.shape
 #         emb = motion.mean(dim=(-2,-1))
 #         prompt_weights = F.softmax(self.linear_layer(emb).view(B, C, self.N), dim=-1)
-        merged_in = torch.cat([x, motion], 1)
-        
-        merged_out = self.conv_1(merged_in)        
-        merged_out_conv1 = self.relu_1(merged_out)
-        merged_out_conv2 = self.relu_2(self.conv_2(merged_out_conv1))
-        merged_out = merged_out_conv2 + self.identity_1(merged_in)
-        merged_out = self.conv_before_merge_1(merged_out)
-        
-        merged_in = merged_out
-        
-        merged_out = self.conv_3(merged_in)
-        merged_out_conv3 = self.relu_3(merged_out)
-        merged_out_conv4 = self.relu_4(self.conv_4(merged_out_conv3))
-        merged_out = merged_out_conv3 + self.identity_2(merged_in)
-        merged_out = self.conv_before_merge_2(merged_out)
-        
-        prompt_weights = F.softmax(self.conv1x1(merged_out), dim=1)  # B, 5, H, W 사이즈
-        
+#         merged_in = torch.cat([x, motion], 1)
+        radius_low = int(0.1 * (H + W) / 2)   # 10% of average dimension
+        radius_high = int(0.4 * (H + W) / 2)  # 40% of average dimension
+        # 1. Apply Fourier transform to get momentum domain representation
+        tensor_fft = torch.fft.fft2(motion, dim=(-2, -1))
+        tensor_fft_shifted = torch.fft.fftshift(tensor_fft, dim=(-2, -1))
 
-        # B는 배치 사이즈
-#         B, N, H, W = prompt_weights.shape
+        # 2. Define frequency masks
+        center_h, center_w = H // 2, W // 2
+        distance = torch.sqrt((torch.arange(H).unsqueeze(1) - center_h) ** 2 + 
+                              (torch.arange(W).unsqueeze(0) - center_w) ** 2).to(motion.device)
 
-#         # 각 배치에 대해 이미지로 저장
-#         for each_batch in range(B):
-#             # 폴더 생성
-#             os.makedirs(f"/home/ohjinjin/result_weight_nhw/{each_batch}/", exist_ok=True)
-#             # 텐서를 PIL 이미지로 변환
-#             imgs = prompt_weights[each_batch].cpu().numpy()  # (N, H, W)
-#             for _ in range(N):
-#                 img = imgs[_]
-# #                 print("CHECKJJINJIN:::::::", img.shape)
-#                 img = (img * 255).astype('uint8')  # 그레이스케일 값 범위를 0-255로 조정
-#                 img = Image.fromarray(img)
-#                 img.save(f"/home/ohjinjin/result_weight_nhw/{each_batch}/prompt_weight_{_}.png")
+        # Low, middle, and high frequency masks in frequency domain
+        mask_low = (distance <= radius_low).float()
+        mask_middle = ((distance > radius_low) & (distance <= radius_high)).float()
+        mask_high = (distance > radius_high).float()
+        # Expanding masks to match B, C, H, W dimensions
+        mask_low = mask_low.unsqueeze(0).unsqueeze(0).expand(B, C, H, W)
+        mask_middle = mask_middle.unsqueeze(0).unsqueeze(0).expand(B, C, H, W)
+        mask_high = mask_high.unsqueeze(0).unsqueeze(0).expand(B, C, H, W)
+        # 3. Apply masks to frequency domain tensor
+        tensor_low_freq = tensor_fft_shifted * mask_low
+        tensor_middle_freq = tensor_fft_shifted * mask_middle
+        tensor_high_freq = tensor_fft_shifted * mask_high
+        # 4. Inverse Fourier transform to bring back to spatial domain
+        tensor_low_spatial = torch.fft.ifftshift(tensor_low_freq, dim=(-2, -1))
+        tensor_low_spatial = torch.fft.ifft2(tensor_low_spatial, dim=(-2, -1)).real
+
+        tensor_middle_spatial = torch.fft.ifftshift(tensor_middle_freq, dim=(-2, -1))
+        tensor_middle_spatial = torch.fft.ifft2(tensor_middle_spatial, dim=(-2, -1)).real
+
+        tensor_high_spatial = torch.fft.ifftshift(tensor_high_freq, dim=(-2, -1))
+        tensor_high_spatial = torch.fft.ifft2(tensor_high_spatial, dim=(-2, -1)).real
+#         filtered_motion_list = [tensor_low_spatial, tensor_middle_spatial, tensor_high_spatial]
         
-        conv_outputs = []
-        for conv in self.convs:
-            out = conv(x)
-            conv_outputs.append(out.unsqueeze(1))
-        prompt_param = torch.cat(conv_outputs, dim=1)
+        merged_in = tensor_low_spatial#motion
+        merged_out = self.conv_1_low(merged_in)        
+        merged_out_conv1 = self.relu_1_low(merged_out)
+        merged_out_conv2 = self.relu_2_low(self.conv_2_low(merged_out_conv1))
+        merged_out = merged_out_conv2 + self.identity_1_low(merged_in)
+        merged_out = self.conv_before_merge_1_low(merged_out)
+#         merged_in = merged_out
+#         merged_out = self.conv_3_low(merged_in)
+#         merged_out_conv3 = self.relu_3_low(merged_out)
+#         merged_out_conv4 = self.relu_4_low(self.conv_4_low(merged_out_conv3))
+#         merged_out = merged_out_conv3 + self.identity_2_low(merged_in)
+#         merged_out = self.conv_before_merge_2_low(merged_out)
+        merged_out_low = self.conv1x1_low(merged_out).unsqueeze(1)
+        
+        merged_in = tensor_middle_spatial#motion
+        merged_out = self.conv_1_middle(merged_in)        
+        merged_out_conv1 = self.relu_1_middle(merged_out)
+        merged_out_conv2 = self.relu_2_middle(self.conv_2_middle(merged_out_conv1))
+        merged_out = merged_out_conv2 + self.identity_1_middle(merged_in)
+        merged_out = self.conv_before_merge_1_middle(merged_out)
+#         merged_in = merged_out
+#         merged_out = self.conv_3_middle(merged_in)
+#         merged_out_conv3 = self.relu_3_middle(merged_out)
+#         merged_out_conv4 = self.relu_4_middle(self.conv_4_middle(merged_out_conv3))
+#         merged_out = merged_out_conv3 + self.identity_2_middle(merged_in)
+#         merged_out = self.conv_before_merge_2_middle(merged_out)
+        merged_out_middle = self.conv1x1_middle(merged_out).unsqueeze(1)
+        
+        merged_in = tensor_high_spatial#motion
+        merged_out = self.conv_1_high(merged_in)        
+        merged_out_conv1 = self.relu_1_high(merged_out)
+        merged_out_conv2 = self.relu_2_high(self.conv_2_high(merged_out_conv1))
+        merged_out = merged_out_conv2 + self.identity_1_high(merged_in)
+        merged_out = self.conv_before_merge_1_high(merged_out)
+#         merged_in = merged_out
+#         merged_out = self.conv_3_high(merged_in)
+#         merged_out_conv3 = self.relu_3_high(merged_out)
+#         merged_out_conv4 = self.relu_4_high(self.conv_4_high(merged_out_conv3))
+#         merged_out = merged_out_conv3 + self.identity_2_high(merged_in)
+#         merged_out = self.conv_before_merge_2_high(merged_out)
+        merged_out_high = self.conv1x1_high(merged_out).unsqueeze(1)
+#         print("CHCHCHCH:::::", merged_out_high.shape) # torch.Size([8, 256, 64, 64])
+        merged_out = torch.cat([merged_out_low, merged_out_middle, merged_out_high], dim=1)  # (B, 3, C, H, W)
+        
+        prompt_weights = F.softmax(merged_out, dim=1)
+        
+#         conv_outputs = []
+#         for conv in self.convs:
+#             out = conv(x)
+#             conv_outputs.append(out.unsqueeze(1))
+#         prompt_param = torch.cat(conv_outputs, dim=1)
+#         print("JINCjin checkkkk 11111111:", self.prompt_size, self.prompt_dim)
+#         print("jinjin CHECKKKK::::", torch.cat(conv_outputs, dim=1).shape, self.prompt_param.unsqueeze(0).repeat(B,1,1,1,1,1).squeeze(1).shape, prompt_weights.shape)
+#         prompt_param = F.interpolate(self.prompt_param,(H,W),mode="bilinear")
+        
+        B_param, N_param, C_param, H_param, W_param = self.prompt_param.shape
+        prompt_param = self.prompt_param.view(B_param * N_param, C_param, H_param, W_param)
+        prompt_param = F.interpolate(prompt_param, size=(H, W), mode="bilinear")
+        # 원래 크기인 (B, N, C, H, W)로 복원
+        prompt_param = prompt_param.view(B_param, N_param, C_param, H, W)
+        prompt_param = prompt_param.unsqueeze(0).repeat(B,1,1,1,1,1).squeeze(1)
+#         prompt_param = F.interpolate(prompt_param,(H,W),mode="bilinear")
 #         prompt = prompt_weights.unsqueeze(-1).unsqueeze(-1) * prompt_param.permute(0, 2, 1, 3, 4)
-        prompt = prompt_param * prompt_weights.unsqueeze(2)
+#         print("CHECKKK,,,,,,,,,,,,,,,,,,LL::", B,C,H,W,prompt_param.shape, prompt_weights.shape)
+        prompt = prompt_param * prompt_weights
 #         prompt = torch.sum(prompt,dim=2)
         prompt = torch.sum(prompt,dim=1)
-        prompt = F.interpolate(prompt,(H,W),mode="bilinear")
+#         print("JINJINJIN:::::", prompt.shape)
+        #prompt = F.interpolate(prompt,(H,W),mode="bilinear")
+#         print("JINJINJIN:2222::::", prompt.shape)
         prompt = self.conv3x3(prompt)
 
         return prompt
@@ -174,8 +269,8 @@ class EFNet(nn.Module):
         self.skip_conv_2_motion = nn.ModuleList()
         for i in reversed(range(depth - 1)):
 #             self.up_path_1.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
-            self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
-            self.up_path_2.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
+            self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int((2**(depth-1-i))*wf/2)))
+            self.up_path_2.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int((2**(depth-1-i))*wf/2)))
             self.skip_conv_1.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
             self.skip_conv_1_motion.append(nn.Conv2d(prev_channels, prev_channels, 3, 1, 1))
             self.skip_conv_2.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
@@ -236,6 +331,7 @@ class EFNet(nn.Module):
 
 
         for i, up in enumerate(self.up_path_1):
+#             print("CHECKKKK:::::", x1.shape, self.skip_conv_1[i](encs[-i-1]).shape, self.skip_conv_1_motion[i](fl[-i-1]).shape)
             x1 = up(x1, self.skip_conv_1[i](encs[-i-1]), self.skip_conv_1_motion[i](fl[-i-1]))
             decs.append(x1)
         sam_feature, out_1 = self.sam12(x1, image)
@@ -402,7 +498,7 @@ class UNetUpBlock(nn.Module):
         return out
 
 class CustomUpBlock(nn.Module):  # in_size = 2*out_size
-    def __init__(self, in_size, out_size, relu_slope, prompt_len=5, prompt_size=16, num_heads=None, ffn_expansion_factor=2.66, bias=False, num_blocks=[1, 4, 4], LayerNorm_type='WithBias'):
+    def __init__(self, in_size, out_size, relu_slope, prompt_len=3, prompt_size=16, num_heads=None, ffn_expansion_factor=2.66, bias=False, num_blocks=[1, 4, 4], LayerNorm_type='WithBias'):
         super(CustomUpBlock, self).__init__()
 
         # PromptGenBlock: 프롬프트 생성 블록
@@ -427,7 +523,7 @@ class CustomUpBlock(nn.Module):  # in_size = 2*out_size
         # CHECK JINJIN out_dec_prev_level:::: torch.Size([1, 256, 64, 64]) out_enc_curr_level::::  torch.Size([1, 128, 128, 128])
 
         # 1. PromptGenBlock 처리
-        dec_curr_param = self.prompt(out_dec_prev_level, motion_dec_prev_level)  # equation (2)에서 F_l대신 motion feature인 G_l로 입력 바꿔줘야하고 함수정의자체에서도 5개의 앙상블링하게끔 마저 수정필요함.
+        dec_curr_param = self.prompt(motion_dec_prev_level)  # equation (2)에서 F_l대신 motion feature인 G_l로 입력 바꿔줘야하고 함수정의자체에서도 5개의 앙상블링하게끔 마저 수정필요함.
 #         print("CHEKC JININ 11:", dec_curr_param.shape)  # torch.Size([1, 256, 64, 64])
         # 2. TransformerBlock으로 노이즈 처리
         out_dec_prev_level = torch.cat([out_dec_prev_level, dec_curr_param], 1)

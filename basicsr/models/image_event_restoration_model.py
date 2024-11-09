@@ -93,29 +93,50 @@ class ImageEventRestorationModel(BaseModel):
                 f'optimizer {optim_type} is not supperted yet.')
         self.optimizers.append(self.optimizer_g)
     
-    def convert_to_3d(self, flow):
-#         """ Convert 2D optical flow to 3D tensor """
+#     def convert_to_3d(self, flow):
+# #         """ Convert 2D optical flow to 3D tensor """
+# #         u = flow[..., 0]
+# #         v = flow[..., 1]
+# #         mag = np.sqrt(u**2 + v**2)
+
+# #         # Normalize u and v
+# #         u_normalized = u / mag
+# #         v_normalized = v / mag
+
+# #         # Avoid division by zero
+# #         u_normalized[np.isnan(u_normalized)] = 0
+# #         v_normalized[np.isnan(v_normalized)] = 0
+
+# #         # Normalize magnitude to [0, 1]
+# #         M = np.max(mag)
+# #         z = mag / M if M != 0 else mag
+
+# #         # Stack to create a 3D tensor
+# #         C = np.stack((u_normalized, v_normalized, z), axis=-1)
+
+# #         return C
+#         # np로 구현한거랑 0.0005정도 차이남
+#         """ Convert 2D optical flow to 3D tensor using PyTorch """
 #         u = flow[..., 0]
 #         v = flow[..., 1]
-#         mag = np.sqrt(u**2 + v**2)
+
+#         # Calculate magnitude
+#         mag = torch.sqrt(u**2 + v**2)
 
 #         # Normalize u and v
-#         u_normalized = u / mag
-#         v_normalized = v / mag
-
-#         # Avoid division by zero
-#         u_normalized[np.isnan(u_normalized)] = 0
-#         v_normalized[np.isnan(v_normalized)] = 0
+#         u_normalized = torch.where(mag != 0, u / mag, torch.zeros_like(u))
+#         v_normalized = torch.where(mag != 0, v / mag, torch.zeros_like(v))
 
 #         # Normalize magnitude to [0, 1]
-#         M = np.max(mag)
+#         M = torch.max(mag)
 #         z = mag / M if M != 0 else mag
 
 #         # Stack to create a 3D tensor
-#         C = np.stack((u_normalized, v_normalized, z), axis=-1)
+#         C = torch.stack((u_normalized, v_normalized, z), dim=-1)
 
 #         return C
-        # np로 구현한거랑 0.0005정도 차이남
+    
+    def convert_to_3d(self, flow):
         """ Convert 2D optical flow to 3D tensor using PyTorch """
         u = flow[..., 0]
         v = flow[..., 1]
@@ -127,9 +148,10 @@ class ImageEventRestorationModel(BaseModel):
         u_normalized = torch.where(mag != 0, u / mag, torch.zeros_like(u))
         v_normalized = torch.where(mag != 0, v / mag, torch.zeros_like(v))
 
-        # Normalize magnitude to [0, 1]
-        M = torch.max(mag)
-        z = mag / M if M != 0 else mag
+        # Normalize magnitude to [0, 1] with max value of 147 and clip outliers
+        M = 147  # Predefined max value
+        z = torch.clamp(mag / M, 0, 1)
+#         print("CHCHCHCHCH=============")
 
         # Stack to create a 3D tensor
         C = torch.stack((u_normalized, v_normalized, z), dim=-1)

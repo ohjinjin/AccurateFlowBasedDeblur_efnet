@@ -9,7 +9,7 @@ from basicsr.utils import scandir
 arch_folder = osp.dirname(osp.abspath(__file__))
 arch_filenames = [
     osp.splitext(osp.basename(v))[0] for v in scandir(arch_folder)
-    if v.endswith('_arch.py')
+    if v.endswith('_arch_nhwc.py')
 ]
 # import all the arch modules
 _arch_modules = [

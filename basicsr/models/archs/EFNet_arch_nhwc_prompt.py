@@ -15,8 +15,6 @@ from basicsr.models.archs.arch_util import EventImage_ChannelAttentionTransforme
 # from basicsr.models.archs.arch_util import FlowImage_ChannelAttentionTransformerBlock
 # from basicsr.models.archs.arch_util import FlowEvent_ChannelAttentionTransformerBlock
 from torch.nn import functional as F
-# import os
-# from PIL import Image
 
 def conv3x3(in_chn, out_chn, bias=True):
     layer = nn.Conv2d(in_chn, out_chn, kernel_size=3, stride=1, padding=1, bias=bias)
@@ -55,17 +53,21 @@ class PromptGenBlock(nn.Module):
     def __init__(self,prompt_dim=128,prompt_len=5,prompt_size = 96,lin_dim = 192, relu_slope=0.2):
         super(PromptGenBlock,self).__init__()
         self.N = prompt_len
-#         self.prompt_param = nn.Parameter(torch.rand(1,prompt_len,prompt_dim,prompt_size,prompt_size))
+        self.prompt_dim = prompt_dim
+        self.prompt_size = prompt_size
+        
+        
+        self.prompt_param = nn.Parameter(torch.rand(1,prompt_len,prompt_dim,prompt_size,prompt_size))
         # N개의 서로 다른 커널 크기를 가지는 Convolution Layer 정의
-        self.convs = nn.ModuleList([
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=False),  # 3x3 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=5, padding=2, bias=False),  # 5x5 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=7, padding=3, bias=False),  # 7x7 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=9, padding=4, bias=False),  # 9x9 커널
-            nn.Conv2d(prompt_dim, prompt_dim, kernel_size=11, padding=5, bias=False)  # 11x11 커널
-        ])
-        self.identity_1 = nn.Conv2d(prompt_dim*2, prompt_dim, 1, 1, 0)
-        self.conv_1 = nn.Conv2d(prompt_dim*2, prompt_dim, kernel_size=3, padding=1, bias=True)
+#         self.convs = nn.ModuleList([
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=False),  # 3x3 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=5, padding=2, bias=False),  # 5x5 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=7, padding=3, bias=False),  # 7x7 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=9, padding=4, bias=False),  # 9x9 커널
+#             nn.Conv2d(prompt_dim, prompt_dim, kernel_size=11, padding=5, bias=False)  # 11x11 커널
+#         ])
+        self.identity_1 = nn.Conv2d(prompt_dim, prompt_dim, 1, 1, 0)
+        self.conv_1 = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
         self.relu_1 = nn.LeakyReLU(relu_slope, inplace=False)
         self.conv_2 = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
         self.relu_2 = nn.LeakyReLU(relu_slope, inplace=False)
@@ -77,16 +79,17 @@ class PromptGenBlock(nn.Module):
         self.conv_4 = nn.Conv2d(prompt_dim, prompt_dim, kernel_size=3, padding=1, bias=True)
         self.relu_4 = nn.LeakyReLU(relu_slope, inplace=False)
         self.conv_before_merge_2 = nn.Conv2d(prompt_dim, prompt_dim , 1, 1, 0)
-        self.conv1x1 = nn.Conv2d(in_channels=prompt_dim, out_channels=5, kernel_size=1, stride=1, padding=0, bias=False)
+        self.conv1x1 = nn.Conv2d(in_channels=prompt_dim, out_channels=self.N*prompt_dim, kernel_size=1, stride=1, padding=0, bias=False)
 #         self.linear_layer = nn.Linear(lin_dim,self.N*lin_dim)
         self.conv3x3 = nn.Conv2d(prompt_dim,prompt_dim,kernel_size=3,stride=1,padding=1,bias=False)
 
 
-    def forward(self,x, motion):
-        B,C,H,W = x.shape
+    def forward(self, motion):
+        B,C,H,W = motion.shape
 #         emb = motion.mean(dim=(-2,-1))
 #         prompt_weights = F.softmax(self.linear_layer(emb).view(B, C, self.N), dim=-1)
-        merged_in = torch.cat([x, motion], 1)
+#         merged_in = torch.cat([x, motion], 1)
+        merged_in = motion
         
         merged_out = self.conv_1(merged_in)        
         merged_out_conv1 = self.relu_1(merged_out)
@@ -102,36 +105,39 @@ class PromptGenBlock(nn.Module):
         merged_out = merged_out_conv3 + self.identity_2(merged_in)
         merged_out = self.conv_before_merge_2(merged_out)
         
-        prompt_weights = F.softmax(self.conv1x1(merged_out), dim=1)  # B, 5, H, W 사이즈
+        prompt_weights = F.softmax(self.conv1x1(merged_out).view(B, 5, C, H, W), dim=1)
         
-
-        # B는 배치 사이즈
-#         B, N, H, W = prompt_weights.shape
-
-#         # 각 배치에 대해 이미지로 저장
-#         for each_batch in range(B):
-#             # 폴더 생성
-#             os.makedirs(f"/home/ohjinjin/result_weight_nhw/{each_batch}/", exist_ok=True)
-#             # 텐서를 PIL 이미지로 변환
-#             imgs = prompt_weights[each_batch].cpu().numpy()  # (N, H, W)
-#             for _ in range(N):
-#                 img = imgs[_]
-# #                 print("CHECKJJINJIN:::::::", img.shape)
-#                 img = (img * 255).astype('uint8')  # 그레이스케일 값 범위를 0-255로 조정
-#                 img = Image.fromarray(img)
-#                 img.save(f"/home/ohjinjin/result_weight_nhw/{each_batch}/prompt_weight_{_}.png")
         
-        conv_outputs = []
-        for conv in self.convs:
-            out = conv(x)
-            conv_outputs.append(out.unsqueeze(1))
-        prompt_param = torch.cat(conv_outputs, dim=1)
+        B_param, N_param, C_param, H_param, W_param = self.prompt_param.shape
+        prompt_param = self.prompt_param.view(B_param * N_param, C_param, H_param, W_param)
+        prompt_param = F.interpolate(prompt_param, size=(H, W), mode="bilinear")
+        # 원래 크기인 (B, N, C, H, W)로 복원
+        prompt_param = prompt_param.view(B_param, N_param, C_param, H, W)
+        prompt_param = prompt_param.unsqueeze(0).repeat(B,1,1,1,1,1).squeeze(1)
+#         prompt_param = F.interpolate(prompt_param,(H,W),mode="bilinear")
 #         prompt = prompt_weights.unsqueeze(-1).unsqueeze(-1) * prompt_param.permute(0, 2, 1, 3, 4)
-        prompt = prompt_param * prompt_weights.unsqueeze(2)
+#         print("CHECKKK,,,,,,,,,,,,,,,,,,LL::", B,C,H,W,prompt_param.shape, prompt_weights.shape)
+        prompt = prompt_param * prompt_weights
 #         prompt = torch.sum(prompt,dim=2)
         prompt = torch.sum(prompt,dim=1)
-        prompt = F.interpolate(prompt,(H,W),mode="bilinear")
+#         print("JINJINJIN:::::", prompt.shape)
+        #prompt = F.interpolate(prompt,(H,W),mode="bilinear")
+#         print("JINJINJIN:2222::::", prompt.shape)
         prompt = self.conv3x3(prompt)
+#         conv_outputs = []
+#         for conv in self.convs:
+#             out = conv(x)
+#             conv_outputs.append(out.unsqueeze(1))
+#         prompt_param = torch.cat(conv_outputs, dim=1)
+#         print("JINCjin checkkkk 11111111:", self.prompt_size, self.prompt_dim)
+#         print("jinjin CHECKKKK::::", torch.cat(conv_outputs, dim=1).shape, self.prompt_param.unsqueeze(0).repeat(B,1,1,1,1,1).squeeze(1).shape, prompt_weights.shape)
+#         prompt_param = self.prompt_param.unsqueeze(0).repeat(B,1,1,1,1,1).squeeze(1)
+# #         prompt = prompt_weights.unsqueeze(-1).unsqueeze(-1) * prompt_param.permute(0, 2, 1, 3, 4)
+#         prompt = prompt_param * prompt_weights
+# #         prompt = torch.sum(prompt,dim=2)
+#         prompt = torch.sum(prompt,dim=1)
+#         prompt = F.interpolate(prompt,(H,W),mode="bilinear")
+#         prompt = self.conv3x3(prompt)
 
         return prompt
     
@@ -174,8 +180,8 @@ class EFNet(nn.Module):
         self.skip_conv_2_motion = nn.ModuleList()
         for i in reversed(range(depth - 1)):
 #             self.up_path_1.append(UNetUpBlock(prev_channels, (2**i)*wf, relu_slope))
-            self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
-            self.up_path_2.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int(prev_channels/4)))
+            self.up_path_1.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int((2**(depth-1-i))*wf/2)))
+            self.up_path_2.append(CustomUpBlock(prev_channels, (2**i)*wf, relu_slope, num_heads=self.num_heads[i], prompt_size=int((2**(depth-1-i))*wf/2)))
             self.skip_conv_1.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
             self.skip_conv_1_motion.append(nn.Conv2d(prev_channels, prev_channels, 3, 1, 1))
             self.skip_conv_2.append(nn.Conv2d((2**i)*wf, (2**i)*wf, 3, 1, 1))
@@ -427,7 +433,7 @@ class CustomUpBlock(nn.Module):  # in_size = 2*out_size
         # CHECK JINJIN out_dec_prev_level:::: torch.Size([1, 256, 64, 64]) out_enc_curr_level::::  torch.Size([1, 128, 128, 128])
 
         # 1. PromptGenBlock 처리
-        dec_curr_param = self.prompt(out_dec_prev_level, motion_dec_prev_level)  # equation (2)에서 F_l대신 motion feature인 G_l로 입력 바꿔줘야하고 함수정의자체에서도 5개의 앙상블링하게끔 마저 수정필요함.
+        dec_curr_param = self.prompt(motion_dec_prev_level)  # equation (2)에서 F_l대신 motion feature인 G_l로 입력 바꿔줘야하고 함수정의자체에서도 5개의 앙상블링하게끔 마저 수정필요함.
 #         print("CHEKC JININ 11:", dec_curr_param.shape)  # torch.Size([1, 256, 64, 64])
         # 2. TransformerBlock으로 노이즈 처리
         out_dec_prev_level = torch.cat([out_dec_prev_level, dec_curr_param], 1)

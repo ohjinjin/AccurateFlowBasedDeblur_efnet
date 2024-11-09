@@ -1,5 +1,5 @@
 # general settings
-name: EFNet_Finetune
+name: Finetune_HWCweight_2stages_batch24_8
 model_type: ImageEventRestorationModel
 scale: 1
 num_gpu: 1 # 4
@@ -11,13 +11,14 @@ datasets:
     type: H5ImageDataset
 
     # dataroot: ./datasets/train
-    dataroot: /cluster/work/cvl/leisun/REBlur/train # REBlur
+    dataroot: ./datasets/REBlur/train # REBlur #####
 
     # keep true if use events
     norm_voxel: true
     return_voxel: true
 
-    return_mask: true 
+    return_mask: true
+    return_flow: true
     use_mask: true
 
     filename_tmpl: '{}'
@@ -30,9 +31,9 @@ datasets:
 
     # data loader settings
     use_shuffle: true
-    num_worker_per_gpu: 3
-    batch_size_per_gpu: 4 
-    dataset_enlarge_ratio: 1  
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 8 
+    dataset_enlarge_ratio: 2 
     prefetch_mode: cpu
     num_prefetch_queue: 2
 
@@ -41,7 +42,7 @@ datasets:
     type: H5ImageDataset
 
     # dataroot: ./datasets/test
-    dataroot: /cluster/work/cvl/leisun/REBlur/test 
+    dataroot: ./datasets/REBlur/test #####
 
     # keep true
     norm_voxel: true  # true !
@@ -68,7 +69,7 @@ network_g:
 
 # path
 path:
-  pretrain_network_g: ~ # pretrain path
+  pretrain_network_g: ./experiments/HWCweight_2stages_batch24_8/models/net_g_300000.pth # pretrain path
   strict_load_g: true
   resume_state: ~
   training_states: ~ # save current trainig model states, for resume
@@ -103,7 +104,7 @@ val:
   save_img: false  
   grids: ~  
   crop_size: ~  #
-  max_minibatch: 8  
+  max_minibatch: 8
 
   metrics:
     psnr:
@@ -122,9 +123,9 @@ logger:
   print_freq: 50
   save_checkpoint_freq: !!float 100
   use_tb_logger: true
-  wandb:
-    project: ~
-    resume_id: ~
+#   wandb:
+#     project: ~
+#     resume_id: ~
 
 # dist training settings
 dist_params:
